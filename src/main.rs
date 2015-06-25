@@ -7,6 +7,7 @@ mod camera;
 mod draw;
 
 use camera::Camera;
+use draw::{Cube, Grid};
 
 use glium::{glutin, DisplayBuild, Surface};
 use glium::glutin::{ElementState, VirtualKeyCode};
@@ -36,15 +37,21 @@ fn main() {
     let mut camera_pos = Vec3::z();
     let mut camera = Camera::new(camera_pos.clone());
     let proj_mat = camera.get_projection_matrix();
-    let grid_req = draw::draw_grid(&display);
+
+    let grid = Grid;
+    let grid_req = grid.create_draw_request(&display);
+
+    let cube = Cube;
+    let cube_req = cube.create_draw_request(&display);
 
     loop {
         let view_mat = camera.get_view_matrix();
         let uniforms = uniform! { proj_mat: proj_mat, view_mat: view_mat };
 
         let mut target = display.draw();
-        target.clear_color_and_depth((0., 0., 1., 1.), 1.);
+        target.clear_color_and_depth((0., 0., 0., 1.), 1.);
         draw::draw(&mut target, &grid_req, &uniforms).unwrap();
+        draw::draw(&mut target, &cube_req, &uniforms).unwrap();
         target.finish().unwrap();
 
         for ev in display.poll_events() {
@@ -58,6 +65,7 @@ fn main() {
                         _ => ()
                     }
                     camera.set_pos(camera_pos.clone());
+                    println!("Camera position set to {:?}", camera_pos);
                 },
                 glutin::Event::Closed => return,
                 _ => ()
