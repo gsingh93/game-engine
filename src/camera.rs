@@ -10,9 +10,13 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new() -> Self {
+    pub fn new(pos: Vec3<f32>) -> Self {
         Camera { fov: BaseFloat::frac_pi_2(), near: 0.1, far: 1024., aspect_ratio: 4./3.,
-                 pos: Vec3::new(0., 0., 1.), look_at: zero() }
+                 pos: pos, look_at: zero() }
+    }
+
+    pub fn set_pos(&mut self, pos: Vec3<f32>) {
+        self.pos = pos;
     }
 
     pub fn get_projection_matrix(&self) -> [[f32; 4]; 4] {
@@ -41,11 +45,9 @@ impl Camera {
         // Right vector
         let u = normalize(&cross(&w, &up));
 
-        // Up vector
+        // Up vector (we shouldn't need to normalize as the cross product of two orthogonal unit
+        // vectors is a unit vector)
         let v = cross(&u, &w);
-
-        // Make sure the normalize isn't necessary
-        debug_assert!(v == normalize(&cross(&u, &w)));
 
         [[u.x, v.x, -w.x, 0.],
          [u.y, v.y, -w.y, 0.],

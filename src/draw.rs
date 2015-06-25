@@ -25,9 +25,10 @@ pub fn draw_grid(display: &Display) -> DrawRequest {
 
     in vec3 position;
     uniform mat4 proj_mat;
+    uniform mat4 view_mat;
 
     void main() {
-        gl_Position = proj_mat * vec4(position, 1.);
+        gl_Position = proj_mat * view_mat * vec4(position, 1.);
     }
 "#;
 
@@ -44,10 +45,10 @@ pub fn draw_grid(display: &Display) -> DrawRequest {
     let mut shape = Vec::new();
     for i in (-10..10) {
         let v1 = Vertex::new(i as f32 / 10., -1., 0.);
-        let v2 = Vertex::new(i as f32 / 10., 1., -1.);
+        let v2 = Vertex::new(i as f32 / 10., 1., 0.);
 
-        let v3 = Vertex::new(-1., i as f32 / 10., -1.);
-        let v4 = Vertex::new(1., i as f32 / 10., -1.);
+        let v3 = Vertex::new(-1., i as f32 / 10., 0.);
+        let v4 = Vertex::new(1., i as f32 / 10., 0.);
 
         shape.push(v1);
         shape.push(v2);
