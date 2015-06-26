@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate glium;
+#[macro_use]
+extern crate log;
 
+extern crate env_logger;
 extern crate nalgebra;
 extern crate time;
 
@@ -13,7 +16,7 @@ use draw::{Cube, Grid};
 use glium::{glutin, DisplayBuild, Surface};
 use glium::glutin::{ElementState, VirtualKeyCode};
 
-use nalgebra::{BaseFloat, Vec3};
+use nalgebra::{BaseFloat, Mat4, Vec3};
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
@@ -26,16 +29,18 @@ impl Vertex {
     }
 }
 
-fn get_rotation_mat(t: time::Timespec) -> [[f32; 4]; 4] {
+fn get_rotation_mat(t: time::Timespec) -> Mat4<f32> {
     let sec = (t.sec as f64) + ((t.nsec as f64)/1e9);
 
-    [[sec.cos() as f32, -(sec.sin()) as f32, 0., 0.],
-     [sec.sin() as f32, sec.cos() as f32, 0., 0.],
-     [0., 0., 1., 0.],
-     [0., 0., 0., 1.]]
+    Mat4::new(sec.cos() as f32,  -sec.sin() as f32, 0., 0.,
+              sec.sin() as f32,  sec.cos() as f32,  0., 0.,
+              0.,                0.,                1., 0.,
+              0.,                0.,                0., 1.)
 }
 
 fn main() {
+    env_logger::init().unwrap();
+
     let display = glutin::WindowBuilder::new()
         .with_dimensions(800, 600)
         .with_title(format!("3D Cube"))
@@ -83,11 +88,11 @@ fn main() {
                         VirtualKeyCode::Right => camera_pos.x += 0.05,
                         _ => ()
                     }
-                    camera.set_pos(camera_pos.clone());
+                    camera.set_pos(&camera_pos);
                 },
                 glutin::Event::MouseWheel(glutin::MouseScrollDelta::LineDelta(_, v)) => {
                     camera_pos.z += v * 0.05;
-                    camera.set_pos(camera_pos.clone());
+                    camera.set_pos(&camera_pos);
                 },
                 glutin::Event::MouseMoved((x, y)) => {
                     if mouse_pressed {

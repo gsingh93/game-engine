@@ -18,13 +18,12 @@ impl Camera {
                  transform: transform }
     }
 
-    // TODO: Ref
-    pub fn set_pos(&mut self, pos: Vec3<f32>) {
+    pub fn set_pos(&mut self, pos: &Vec3<f32>) {
         self.transform.set_col(3, Vec4::new(pos.x, pos.y, pos.z, 1.));
-        println!("Camera position set to {:?}", pos);
+        debug!("Camera position set to {:?}", pos);
     }
 
-    pub fn get_projection_matrix(&self) -> [[f32; 4]; 4] {
+    pub fn get_projection_matrix(&self) -> Mat4<f32> {
         let n = self.near;
         let f = self.far;
 
@@ -33,10 +32,10 @@ impl Camera {
         let a = (f + n) / (n - f);
         let b = (2. * f * n) / (n - f);
 
-        [[x,  0., 0., 0.],
-         [0., y,  0., 0.],
-         [0., 0., a, -1.],
-         [0., 0., b,  0.]]
+        Mat4::new(x,  0., 0.,  0.,
+                  0., y,  0.,  0.,
+                  0., 0., a,   b,
+                  0., 0., -1., 0.)
     }
 
     pub fn get_view_matrix(&self) -> Mat4<f32> {
@@ -68,5 +67,7 @@ impl Camera {
         let trans_row = self.transform.col(3);
         self.transform = pitch_mat * yaw_mat;
         self.transform.set_col(3, trans_row);
+
+        debug!("Transform set to {:?}", self.transform);
     }
 }

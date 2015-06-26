@@ -7,3 +7,5 @@ authors = ["Gulshan Singh <gsingh2011@gmail.com>"]
 glium = "*"
 nalgebra = "*"
 time = "*"
+env_logger = "*"
+log = "*"
