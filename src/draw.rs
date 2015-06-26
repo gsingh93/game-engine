@@ -56,12 +56,18 @@ void main() {
             shape.push(v4);
         }
 
+        let params = DrawParameters {
+            depth_test: DepthTest::IfLess,
+            depth_write: true,
+            .. Default::default()
+        };
+
         let vb = VertexBuffer::new(display, shape);
         let indices = NoIndices(PrimitiveType::LinesList);
         let program = Program::from_source(display, vertex_shader_src,
                                            fragment_shader_src, None).unwrap();
 
-        DrawRequest::new(vb, indices, program, Default::default())
+        DrawRequest::new(vb, indices, program, params)
     }
 }
 
@@ -108,18 +114,31 @@ void main() {
         let v7 = Vertex::new(0.25, -0.25, 0.25);
         let v8 = Vertex::new(0.25, 0.25, 0.25);
 
-        let shape = vec![v1, v2, v3,
-                         v2, v3, v4,
-                         v2, v4, v5,
-                         v4, v5, v6,
-                         v4, v6, v7,
-                         v3, v4, v7,
-                         v5, v6, v7,
-                         v5, v7, v8,
-                         v3, v7, v8,
-                         v1, v3, v8,
-                         v1, v2, v5,
-                         v1, v5, v8];
+        let shape = vec![
+            // Back face (z = -.25)
+            v1, v2, v3,
+            v2, v3, v4,
+
+            // Left face (x = -.25)
+            v2, v4, v5,
+            v4, v5, v6,
+
+            // Bottom face (y = -.25)
+            v4, v6, v7,
+            v3, v4, v7,
+
+            // Front face (z = .25)
+            v5, v6, v7,
+            v5, v7, v8,
+
+            // Right face (x = .25)
+            v3, v7, v8,
+            v1, v3, v8,
+
+            // Top face (y = .25)
+            v1, v2, v5,
+            v1, v5, v8,
+        ];
 
         let params = DrawParameters {
             depth_test: DepthTest::IfLess,
