@@ -81,12 +81,13 @@ impl Cube {
 in vec3 position;
 uniform mat4 proj_mat;
 uniform mat4 view_mat;
+uniform mat4 rotate_mat;
 
 out vec3 v_coord;
 
 void main() {
     v_coord = position;
-    gl_Position = proj_mat * view_mat * vec4(position, 1.);
+    gl_Position = proj_mat * view_mat * rotate_mat * vec4(position, 1.);
 }"#;
 
         let fragment_shader_src = r#"

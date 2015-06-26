@@ -2,6 +2,7 @@
 extern crate glium;
 
 extern crate nalgebra;
+extern crate time;
 
 mod camera;
 mod draw;
@@ -45,13 +46,22 @@ fn main() {
     let cube_req = cube.create_draw_request(&display);
 
     loop {
+        let t = time::get_time();
+        let sec = (t.sec as f64) + ((t.nsec as f64)/1e9);
+        let rotate_mat = [[sec.cos() as f32, -(sec.sin()) as f32, 0., 0.],
+                          [sec.sin() as f32, sec.cos() as f32, 0., 0.],
+                          [0., 0., 1., 0.],
+                          [0., 0., 0., 1.]];
+
         let view_mat = camera.get_view_matrix();
-        let uniforms = uniform! { proj_mat: proj_mat, view_mat: view_mat };
+        let grid_uniforms = uniform! { proj_mat: proj_mat, view_mat: view_mat };
+        let cube_uniforms = uniform! { proj_mat: proj_mat, view_mat: view_mat,
+                                       rotate_mat: rotate_mat };
 
         let mut target = display.draw();
         target.clear_color_and_depth((0., 0., 0., 1.), 1.);
-        draw::draw(&mut target, &grid_req, &uniforms).unwrap();
-        draw::draw(&mut target, &cube_req, &uniforms).unwrap();
+        draw::draw(&mut target, &grid_req, &grid_uniforms).unwrap();
+        draw::draw(&mut target, &cube_req, &cube_uniforms).unwrap();
         target.finish().unwrap();
 
         for ev in display.poll_events() {
