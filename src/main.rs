@@ -13,7 +13,7 @@ use draw::{Cube, Grid};
 use glium::{glutin, DisplayBuild, Surface};
 use glium::glutin::{ElementState, VirtualKeyCode};
 
-use nalgebra::Vec3;
+use nalgebra::{BaseFloat, Vec3};
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
@@ -24,6 +24,15 @@ impl Vertex {
     fn new(x: f32, y: f32, z: f32) -> Self {
         Vertex { position: [x, y, z] }
     }
+}
+
+fn get_rotation_mat(t: time::Timespec) -> [[f32; 4]; 4] {
+    let sec = (t.sec as f64) + ((t.nsec as f64)/1e9);
+
+    [[sec.cos() as f32, -(sec.sin()) as f32, 0., 0.],
+     [sec.sin() as f32, sec.cos() as f32, 0., 0.],
+     [0., 0., 1., 0.],
+     [0., 0., 0., 1.]]
 }
 
 fn main() {
@@ -45,14 +54,14 @@ fn main() {
     let cube = Cube;
     let cube_req = cube.create_draw_request(&display);
 
+    let mut mouse_pressed = false;
     loop {
-        let t = time::get_time();
-        let sec = (t.sec as f64) + ((t.nsec as f64)/1e9);
-        let rotate_mat = [[sec.cos() as f32, -(sec.sin()) as f32, 0., 0.],
-                          [sec.sin() as f32, sec.cos() as f32, 0., 0.],
-                          [0., 0., 1., 0.],
-                          [0., 0., 0., 1.]];
+        let (w, h) = match display.get_window().unwrap().get_inner_size() {
+            Some(dim) => dim,
+            None => panic!("Couldn't get window dimensions")
+        };
 
+        let rotate_mat = get_rotation_mat(time::get_time());
         let view_mat = camera.get_view_matrix();
         let grid_uniforms = uniform! { proj_mat: proj_mat, view_mat: view_mat };
         let cube_uniforms = uniform! { proj_mat: proj_mat, view_mat: view_mat,
@@ -75,12 +84,20 @@ fn main() {
                         _ => ()
                     }
                     camera.set_pos(camera_pos.clone());
-                    println!("Camera position set to {:?}", camera_pos);
                 },
                 glutin::Event::MouseWheel(glutin::MouseScrollDelta::LineDelta(_, v)) => {
                     camera_pos.z += v * 0.05;
                     camera.set_pos(camera_pos.clone());
-                    println!("Camera position set to {:?}", camera_pos);
+                },
+                glutin::Event::MouseMoved((x, y)) => {
+                    if mouse_pressed {
+                        let pitch = (y as f32 / h as f32) * f32::two_pi();
+                        let yaw = (x as f32 / w as f32) * f32::two_pi();
+                        camera.set_abs_rotation(pitch, -yaw);
+                    }
+                },
+                glutin::Event::MouseInput(state, glutin::MouseButton::Left) => {
+                    mouse_pressed = if state == ElementState::Pressed { true } else { false };
                 }
                 glutin::Event::Closed => return,
                 _ => ()
