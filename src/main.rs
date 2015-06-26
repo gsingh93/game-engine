@@ -77,6 +77,11 @@ fn main() {
                     camera.set_pos(camera_pos.clone());
                     println!("Camera position set to {:?}", camera_pos);
                 },
+                glutin::Event::MouseWheel(glutin::MouseScrollDelta::LineDelta(_, v)) => {
+                    camera_pos.z += v * 0.05;
+                    camera.set_pos(camera_pos.clone());
+                    println!("Camera position set to {:?}", camera_pos);
+                }
                 glutin::Event::Closed => return,
                 _ => ()
             }
