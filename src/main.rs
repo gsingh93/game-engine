@@ -89,6 +89,10 @@ fn main() {
                         VirtualKeyCode::Down => camera_pos.y -= 0.05,
                         VirtualKeyCode::Left => camera_pos.x -= 0.05,
                         VirtualKeyCode::Right => camera_pos.x += 0.05,
+                        VirtualKeyCode::R => {
+                            camera_pos = Vec3::new(0., 0., 1.);
+                            camera.set_abs_rotation(0., 0.);
+                        }
                         _ => ()
                     }
                     camera.set_pos(&camera_pos);
