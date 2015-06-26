@@ -18,6 +18,8 @@ use glium::glutin::{ElementState, VirtualKeyCode};
 
 use nalgebra::{BaseFloat, Mat4, Vec3};
 
+const RELATIVE_ROTATION: bool = true;
+
 #[derive(Copy, Clone)]
 pub struct Vertex {
     position: [f32; 3]
@@ -60,6 +62,7 @@ fn main() {
     let cube_req = cube.create_draw_request(&display);
 
     let mut mouse_pressed = false;
+    let mut old_mouse_coords = None;
     loop {
         let (w, h) = match display.get_window().unwrap().get_inner_size() {
             Some(dim) => dim,
@@ -96,13 +99,30 @@ fn main() {
                 },
                 glutin::Event::MouseMoved((x, y)) => {
                     if mouse_pressed {
-                        let pitch = (y as f32 / h as f32) * f32::two_pi();
-                        let yaw = (x as f32 / w as f32) * f32::two_pi();
-                        camera.set_abs_rotation(pitch, -yaw);
+                        if !RELATIVE_ROTATION {
+                            let pitch = (y as f32 / h as f32) * f32::two_pi();
+                            let yaw = (x as f32 / w as f32) * f32::two_pi();
+                            camera.set_abs_rotation(pitch, -yaw);
+                        } else {
+                            if let Some((x_old, y_old)) = old_mouse_coords {
+                                let delta_x = (x - x_old) as f32;
+                                let delta_y = (y - y_old) as f32;
+
+                                let pitch = (delta_y * 0.5 / h as f32) * f32::two_pi();
+                                let yaw = (delta_x * 0.5 / w as f32) * f32::two_pi();
+                                camera.rotate(pitch, yaw);
+                            }
+                            old_mouse_coords = Some((x, y));
+                        }
                     }
                 },
                 glutin::Event::MouseInput(state, glutin::MouseButton::Left) => {
-                    mouse_pressed = if state == ElementState::Pressed { true } else { false };
+                    mouse_pressed = if state == ElementState::Pressed {
+                        true
+                    } else {
+                        old_mouse_coords = None;
+                        false
+                    };
                 }
                 glutin::Event::Closed => return,
                 _ => ()

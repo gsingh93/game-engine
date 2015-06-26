@@ -70,4 +70,19 @@ impl Camera {
 
         debug!("Transform set to {:?}", self.transform);
     }
+
+    pub fn rotate(&mut self, pitch: f32, yaw: f32) {
+        let pitch_mat = Mat4::new(1., 0.,           0.,          0.,
+                                  0., pitch.cos(), -pitch.sin(), 0.,
+                                  0., pitch.sin(),  pitch.cos(), 0.,
+                                  0., 0.,           0.,          1.);
+        let yaw_mat = Mat4::new(yaw.cos(),  0., yaw.sin(), 0.,
+                                0.,         1., 0.,        0.,
+                                -yaw.sin(), 0., yaw.cos(), 0.,
+                                0.,         0., 0.,        1.);
+
+        self.transform = self.transform * pitch_mat * yaw_mat;
+
+        debug!("Transform set to {:?}", self.transform);
+    }
 }
