@@ -25,8 +25,8 @@ impl Camera {
 
         let y = 1. / (self.fov / 2.).tan();
         let x = y * self.aspect_ratio;
-        let a = (f + n) / (f - n);
-        let b = (2. * f * n) / (f - n);
+        let a = (f + n) / (n - f);
+        let b = (2. * f * n) / (n - f);
 
         [[x,  0., 0., 0.],
          [0., y,  0., 0.],
