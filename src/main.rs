@@ -16,13 +16,13 @@ use draw::{Cube, Grid};
 use glium::{glutin, Display, DisplayBuild, Surface};
 use glium::glutin::{ElementState, VirtualKeyCode};
 
-use nalgebra::{BaseFloat, Mat4, Vec3};
+use nalgebra::{zero, BaseFloat, Mat4, Vec3};
 
 const RELATIVE_ROTATION: bool = true;
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
-    position: [f32; 3]
+    pub position: [f32; 3]
 }
 
 impl Vertex {
@@ -58,7 +58,7 @@ fn main() {
 
     implement_vertex!(Vertex, position);
 
-    let mut camera_pos = Vec3::z();
+    let mut camera_pos = Vec3::new(0., 0., 1.);
     let mut camera = {
         let (w, h) = get_display_dim(&display);
         let (w, h) = (w as f32, h as f32);
@@ -68,11 +68,12 @@ fn main() {
     let grid = Grid::new(20);
     let grid_req = grid.create_draw_request(&display);
 
-    let cube = Cube;
+    let cube = Cube::new(0.25, zero());
     let cube_req = cube.create_draw_request(&display);
 
     let mut mouse_pressed = false;
     let mut old_mouse_coords = None;
+
     loop {
         let proj_mat = camera.get_projection_matrix();
         let rotate_mat = get_rotation_mat(time::get_time());

@@ -4,6 +4,8 @@ use glium::{DepthTest, Display, DrawError, DrawParameters, Surface, Program, Ver
 use glium::index::{NoIndices, PrimitiveType};
 use glium::uniforms::Uniforms;
 
+use nalgebra::Vec3;
+
 pub struct DrawRequest<'a> {
     vb: VertexBuffer<Vertex>,
     indices: NoIndices,
@@ -81,9 +83,16 @@ void main() {
     }
 }
 
-pub struct Cube;
+pub struct Cube {
+    dim: f32,
+    pos: Vec3<f32>
+}
 
 impl Cube {
+    pub fn new(dim: f32, pos: Vec3<f32>) -> Self {
+        Cube { dim: dim, pos: pos }
+    }
+
     pub fn create_draw_request<'a>(&self, display: &Display) -> DrawRequest<'a> {
         let vertex_shader_src = r#"
 #version 140
@@ -116,16 +125,17 @@ void main() {
     }
 }"#;
 
-        let v1 = Vertex::new(0.25, 0.25, -0.25);
-        let v2 = Vertex::new(-0.25, 0.25, -0.25);
-        let v3 = Vertex::new(0.25, -0.25, -0.25);
-        let v4 = Vertex::new(-0.25, -0.25, -0.25);
-        let v5 = Vertex::new(-0.25, 0.25, 0.25);
-        let v6 = Vertex::new(-0.25, -0.25, 0.25);
-        let v7 = Vertex::new(0.25, -0.25, 0.25);
-        let v8 = Vertex::new(0.25, 0.25, 0.25);
 
-        let shape = vec![
+        let v1 = Vertex::new(self.dim, self.dim, -self.dim);
+        let v2 = Vertex::new(-self.dim, self.dim, -self.dim);
+        let v3 = Vertex::new(self.dim, -self.dim, -self.dim);
+        let v4 = Vertex::new(-self.dim, -self.dim, -self.dim);
+        let v5 = Vertex::new(-self.dim, self.dim, self.dim);
+        let v6 = Vertex::new(-self.dim, -self.dim, self.dim);
+        let v7 = Vertex::new(self.dim, -self.dim, self.dim);
+        let v8 = Vertex::new(self.dim, self.dim, self.dim);
+
+        let mut shape = vec![
             // Back face (z = -.25)
             v1, v2, v3,
             v2, v3, v4,
@@ -150,6 +160,11 @@ void main() {
             v1, v2, v5,
             v1, v5, v8,
         ];
+
+        for v in shape.iter_mut() {
+            let p = v.position;
+            *v = Vertex::new(p[0] + self.pos.x, p[1] + self.pos.y, p[2] + self.pos.z);
+        }
 
         let params = DrawParameters {
             depth_test: DepthTest::IfLess,
