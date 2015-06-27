@@ -18,7 +18,15 @@ impl<'a> DrawRequest<'a> {
     }
 }
 
-pub struct Grid;
+pub struct Grid {
+    dim: u16
+}
+
+impl Grid {
+    pub fn new(dim: u16) -> Self {
+        Grid { dim: dim }
+    }
+}
 
 impl Grid {
     pub fn create_draw_request<'a>(&self, display: &Display) -> DrawRequest<'a> {
@@ -43,12 +51,14 @@ void main() {
 }"#;
 
         let mut shape = Vec::new();
-        for i in (-10..10) {
-            let v1 = Vertex::new(i as f32 / 10., -1., 0.);
-            let v2 = Vertex::new(i as f32 / 10., 1., 0.);
+        let len = self.dim as f32 / 10.;
+        for i in 0..self.dim * 2 + 1 {
+            let i = i as f32;
+            let v1 = Vertex::new(-len + i * 0.1, -len, 0.);
+            let v2 = Vertex::new(-len + i * 0.1, len, 0.);
 
-            let v3 = Vertex::new(-1., i as f32 / 10., 0.);
-            let v4 = Vertex::new(1., i as f32 / 10., 0.);
+            let v3 = Vertex::new(-len, -len + i * 0.1, 0.);
+            let v4 = Vertex::new(len, -len + i * 0.1, 0.);
 
             shape.push(v1);
             shape.push(v2);

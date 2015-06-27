@@ -9,13 +9,18 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new(pos: Vec3<f32>) -> Self {
+    pub fn new(pos: Vec3<f32>, aspect_ratio: f32) -> Self {
         let transform = Mat4::new(1., 0., 0., pos.x,
                                   0., 1., 0., pos.y,
                                   0., 0., 1., pos.z,
                                   0., 0., 0., 1.);
-        Camera { fov: BaseFloat::frac_pi_2(), near: 0.1, far: 1024., aspect_ratio: 4./3.,
-                 transform: transform }
+        Camera {
+            fov: BaseFloat::frac_pi_2(),
+            near: 0.1,
+            far: 1024.,
+            aspect_ratio: aspect_ratio,
+            transform: transform,
+        }
     }
 
     pub fn set_pos(&mut self, pos: &Vec3<f32>) {
@@ -23,12 +28,16 @@ impl Camera {
         debug!("Camera position set to {:?}", pos);
     }
 
+    pub fn set_aspect_ratio(&mut self, aspect_ratio: f32) {
+        self.aspect_ratio = aspect_ratio;
+    }
+
     pub fn get_projection_matrix(&self) -> Mat4<f32> {
         let n = self.near;
         let f = self.far;
 
         let y = 1. / (self.fov / 2.).tan();
-        let x = y * self.aspect_ratio;
+        let x = y / self.aspect_ratio;
         let a = (f + n) / (n - f);
         let b = (2. * f * n) / (n - f);
 

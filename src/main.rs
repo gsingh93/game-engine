@@ -13,7 +13,7 @@ mod draw;
 use camera::Camera;
 use draw::{Cube, Grid};
 
-use glium::{glutin, DisplayBuild, Surface};
+use glium::{glutin, Display, DisplayBuild, Surface};
 use glium::glutin::{ElementState, VirtualKeyCode};
 
 use nalgebra::{BaseFloat, Mat4, Vec3};
@@ -40,6 +40,13 @@ fn get_rotation_mat(t: time::Timespec) -> Mat4<f32> {
               0.,                0.,                0., 1.)
 }
 
+fn get_display_dim(display: &Display) -> (u32, u32) {
+    match display.get_window().unwrap().get_inner_size() {
+        Some(dim) => dim,
+        None => panic!("Couldn't get window dimensions")
+    }
+}
+
 fn main() {
     env_logger::init().unwrap();
 
@@ -52,10 +59,13 @@ fn main() {
     implement_vertex!(Vertex, position);
 
     let mut camera_pos = Vec3::z();
-    let mut camera = Camera::new(camera_pos.clone());
-    let proj_mat = camera.get_projection_matrix();
+    let mut camera = {
+        let (w, h) = get_display_dim(&display);
+        let (w, h) = (w as f32, h as f32);
+        Camera::new(camera_pos.clone(), w / h)
+    };
 
-    let grid = Grid;
+    let grid = Grid::new(20);
     let grid_req = grid.create_draw_request(&display);
 
     let cube = Cube;
@@ -64,11 +74,7 @@ fn main() {
     let mut mouse_pressed = false;
     let mut old_mouse_coords = None;
     loop {
-        let (w, h) = match display.get_window().unwrap().get_inner_size() {
-            Some(dim) => dim,
-            None => panic!("Couldn't get window dimensions")
-        };
-
+        let proj_mat = camera.get_projection_matrix();
         let rotate_mat = get_rotation_mat(time::get_time());
         let view_mat = camera.get_view_matrix();
         let grid_uniforms = uniform! { proj_mat: proj_mat, view_mat: view_mat };
@@ -103,17 +109,20 @@ fn main() {
                 },
                 glutin::Event::MouseMoved((x, y)) => {
                     if mouse_pressed {
+                        let (x, y) = (x as f32, y as f32);
+                        let (w, h) = get_display_dim(&display);
+                        let (w, h) = (w as f32, h as f32);
                         if !RELATIVE_ROTATION {
-                            let pitch = (y as f32 / h as f32) * f32::two_pi();
-                            let yaw = (x as f32 / w as f32) * f32::two_pi();
+                            let pitch = (y / h) * f32::two_pi();
+                            let yaw = (x / w) * f32::two_pi();
                             camera.set_abs_rotation(pitch, -yaw);
                         } else {
                             if let Some((x_old, y_old)) = old_mouse_coords {
-                                let delta_x = (x - x_old) as f32;
-                                let delta_y = (y - y_old) as f32;
+                                let delta_x = x - x_old;
+                                let delta_y = y - y_old;
 
-                                let pitch = (delta_y * 0.5 / h as f32) * f32::two_pi();
-                                let yaw = (delta_x * 0.5 / w as f32) * f32::two_pi();
+                                let pitch = (delta_y * 0.5 / h) * f32::two_pi();
+                                let yaw = (delta_x * 0.5 / w) * f32::two_pi();
                                 camera.rotate(pitch, yaw);
                             }
                             old_mouse_coords = Some((x, y));
@@ -127,7 +136,10 @@ fn main() {
                         old_mouse_coords = None;
                         false
                     };
-                }
+                },
+                glutin::Event::Resized(x, y) => {
+                    camera.set_aspect_ratio(x as f32 / y as f32);
+                },
                 glutin::Event::Closed => return,
                 _ => ()
             }
