@@ -17,7 +17,7 @@ use glium::vertex::VertexBufferAny;
 
 use image;
 
-use nalgebra::{self, Vec3, Mat4};
+use nalgebra::{self, Col, Mat4, Vec3, Vec4};
 
 use obj;
 
@@ -141,7 +141,6 @@ impl EngineContext {
 
 pub struct Grid<'a> {
     pub parent: Object<'a>,
-    dim: u16,
 }
 
 impl<'a> Grid<'a> {
@@ -174,7 +173,7 @@ impl<'a> Grid<'a> {
             .draw_params(params)
             .build();
 
-        Grid { parent: parent, dim: dim }
+        Grid { parent: parent }
     }
 
     pub fn construct_uniforms(&self, camera: &Camera) -> UniformsVec {
@@ -188,16 +187,14 @@ impl<'a> Grid<'a> {
 
 pub struct Cube<'a> {
     pub parent: Object<'a>,
-    dim: f32,
-    pos: Vec3<f32>,
-    texture: ::glium::texture::CompressedSrgbTexture2d,
+    texture: Texture2d,
 }
 
 impl<'a> Cube<'a> {
     pub fn new<F: Facade>(facade: &F, dim: f32, pos: Vec3<f32>) -> Self {
         let image = image::load(Cursor::new(&include_bytes!("../resources/cube.png")[..]),
                                 image::PNG).unwrap();
-        let tex = ::glium::texture::CompressedSrgbTexture2d::new(facade, image);
+        let tex = Texture2d::new(facade, image);
 
         let params = DrawParameters {
             depth_test: DepthTest::IfLess,
@@ -205,13 +202,18 @@ impl<'a> Cube<'a> {
             .. Default::default()
         };
 
+        let mut transform: Mat4<f32> = nalgebra::new_identity(4);
+        transform = transform * dim;
+        transform.set_col(3, Vec4::new(pos.x, pos.y, pos.z, 1.));
+
         let parent = ObjectBuilder::from_obj(facade, "resources/cube.obj",
                                              NoIndices(PrimitiveType::TrianglesList))
             .draw_params(params)
             .shader(ShaderType::UnlitTexture)
+            .transform(transform)
             .build();
 
-        Cube { parent: parent, dim: dim, pos: pos, texture: tex }
+        Cube { parent: parent, texture: tex }
     }
 
     pub fn get_rotation_mat(t: time::Timespec) -> Mat4<f32> {
@@ -228,7 +230,7 @@ impl<'a> Cube<'a> {
             ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
             ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
             ("transform", UniformValue::Mat4(*self.parent.transform.as_array())),
-            ("tex", UniformValue::CompressedSrgbTexture2d(&self.texture, Some(Default::default())))])
+            ("tex", UniformValue::Texture2d(&self.texture, None))])
     }
 }
 
