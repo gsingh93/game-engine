@@ -1,12 +1,14 @@
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ShaderType {
-    Unlit
+    UnlitColor,
+    UnlitTexture,
 }
 
 impl ShaderType {
     pub fn to_filename(&self) -> &'static str {
         match self {
-            &ShaderType::Unlit => "shaders/unlit.fragment.glsl"
+            &ShaderType::UnlitColor => "shaders/unlit.fragment.glsl",
+            &ShaderType::UnlitTexture => "shaders/unlit-texture.fragment.glsl"
         }
     }
 }

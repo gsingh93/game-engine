@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Cursor, Read};
 use std::fs::File;
 use std::path::Path;
 
@@ -11,7 +11,11 @@ use genmesh;
 use glium::{DepthTest, DrawError, DrawParameters, Surface, Program, VertexBuffer};
 use glium::backend::Facade;
 use glium::index::{IndicesSource, NoIndices, PrimitiveType};
+use glium::texture::Texture2d;
+use glium::uniforms::{UniformValue, Uniforms};
 use glium::vertex::VertexBufferAny;
+
+use image;
 
 use nalgebra::{self, Vec3, Mat4};
 
@@ -38,6 +42,7 @@ pub struct ObjectBuilder<'a> {
     indices: IndicesSource<'a>,
     draw_params: Option<DrawParameters<'a>>,
     transform: Option<Mat4<f32>>,
+    shader_type: Option<ShaderType>,
 }
 
 impl<'a> ObjectBuilder<'a> {
@@ -47,6 +52,7 @@ impl<'a> ObjectBuilder<'a> {
             indices: indices.into(),
             draw_params: None,
             transform: None,
+            shader_type: None,
         }
     }
 
@@ -66,13 +72,18 @@ impl<'a> ObjectBuilder<'a> {
         self
     }
 
+    pub fn shader(mut self, shader_type: ShaderType) -> Self {
+        self.shader_type = Some(shader_type);
+        self
+    }
+
     pub fn build(self) -> Object<'a> {
         Object {
             vertex_buffer: self.vertex_buffer,
             indices: self.indices,
             draw_params: self.draw_params.unwrap_or_else(|| Default::default()),
             transform: self.transform.unwrap_or_else(|| nalgebra::new_identity(4)),
-            shader_type: ShaderType::Unlit
+            shader_type: self.shader_type.unwrap_or(ShaderType::UnlitColor),
         }
     }
 }
@@ -90,6 +101,15 @@ pub struct EngineContext {
     shader_map: HashMap<ShaderType, String>,
 }
 
+struct UniformsVec<'a>(Vec<(&'static str, UniformValue<'a>)>);
+impl<'b> Uniforms for UniformsVec<'b> {
+    fn visit_values<'a, F: FnMut(&str, UniformValue<'a>)>(&'a self, mut f: F) {
+        for v in self.0.iter() {
+            f(&v.0, v.1);
+        }
+    }
+}
+
 impl EngineContext {
     pub fn new() -> Self {
         let mut shader = String::new();
@@ -97,22 +117,17 @@ impl EngineContext {
         EngineContext { vertex_shader: shader, shader_map: HashMap::new() }
     }
 
-    pub fn draw<F: Facade, S: Surface>(&mut self, surface: &mut S, facade: &F,
-                                       camera: &Camera, obj: &Object) -> Result<(), DrawError> {
+    pub fn draw<'a, F: Facade, S: Surface>(&mut self,
+                                           surface: &mut S,
+                                           facade: &F,
+                                           obj: &Object,
+                                           uniforms: &UniformsVec<'a>)
+                                           -> Result<(), DrawError> {
         let &mut EngineContext { ref vertex_shader, ref mut shader_map } = self;
-        let uniforms = match obj.shader_type {
-            ShaderType::Unlit =>
-                uniform! {
-                    proj_matrix: camera.projection_matrix(),
-                    view_matrix: camera.view_matrix(),
-                    transform: obj.transform,
-                },
-        };
         let fragment_shader = Self::get_shader(shader_map, obj.shader_type);
         let program = Program::from_source(facade, vertex_shader,
                                            fragment_shader, None).unwrap();
-        surface.draw(&obj.vertex_buffer, obj.indices.clone(),
-                     &program, &uniforms, &obj.draw_params)
+        surface.draw(&obj.vertex_buffer, obj.indices.clone(), &program, uniforms, &obj.draw_params)
     }
 
     fn get_shader(shader_map: &mut HashMap<ShaderType, String>, shader_type: ShaderType) -> &str {
@@ -161,19 +176,28 @@ impl<'a> Grid<'a> {
 
         Grid { parent: parent, dim: dim }
     }
+
+    pub fn construct_uniforms(&self, camera: &Camera) -> UniformsVec {
+        UniformsVec(vec![
+            ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
+            ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
+            ("transform", UniformValue::Mat4(*self.parent.transform.as_array())),
+            ("color", UniformValue::Vec3([1., 1., 1.]))])
+    }
 }
 
 pub struct Cube<'a> {
     pub parent: Object<'a>,
     dim: f32,
-    pos: Vec3<f32>
+    pos: Vec3<f32>,
+    texture: ::glium::texture::CompressedSrgbTexture2d,
 }
 
 impl<'a> Cube<'a> {
     pub fn new<F: Facade>(facade: &F, dim: f32, pos: Vec3<f32>) -> Self {
-        // let image = image::load(::std::io::Cursor::new(&include_bytes!("../resources/cube.png")[..]),
-        //                         image::PNG).unwrap();
-        // let tex = glium::texture::CompressedSrgbTexture2d::new(&display, image);
+        let image = image::load(Cursor::new(&include_bytes!("../resources/cube.png")[..]),
+                                image::PNG).unwrap();
+        let tex = ::glium::texture::CompressedSrgbTexture2d::new(facade, image);
 
         let params = DrawParameters {
             depth_test: DepthTest::IfLess,
@@ -184,9 +208,10 @@ impl<'a> Cube<'a> {
         let parent = ObjectBuilder::from_obj(facade, "resources/cube.obj",
                                              NoIndices(PrimitiveType::TrianglesList))
             .draw_params(params)
+            .shader(ShaderType::UnlitTexture)
             .build();
 
-        Cube { parent: parent, dim: dim, pos: pos }
+        Cube { parent: parent, dim: dim, pos: pos, texture: tex }
     }
 
     pub fn get_rotation_mat(t: time::Timespec) -> Mat4<f32> {
@@ -196,6 +221,14 @@ impl<'a> Cube<'a> {
                   sec.sin() as f32,  sec.cos() as f32,  0., 0.,
                   0.,                0.,                1., 0.,
                   0.,                0.,                0., 1.)
+    }
+
+    pub fn construct_uniforms(&self, camera: &Camera) -> UniformsVec {
+        UniformsVec(vec![
+            ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
+            ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
+            ("transform", UniformValue::Mat4(*self.parent.transform.as_array())),
+            ("tex", UniformValue::CompressedSrgbTexture2d(&self.texture, Some(Default::default())))])
     }
 }
 

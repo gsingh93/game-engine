@@ -58,8 +58,8 @@ fn main() {
     loop {
         let mut target = display.draw();
         target.clear_color_and_depth((0., 0., 0., 1.), 1.);
-        ctxt.draw(&mut target, &display, &camera, &grid.parent).unwrap();
-        ctxt.draw(&mut target, &display, &camera, &cube.parent).unwrap();
+        ctxt.draw(&mut target, &display, &grid.parent, &grid.construct_uniforms(&camera)).unwrap();
+        ctxt.draw(&mut target, &display, &cube.parent, &cube.construct_uniforms(&camera)).unwrap();
         target.finish().unwrap();
 
         for ev in display.poll_events() {
