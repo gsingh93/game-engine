@@ -4,11 +4,16 @@ extern crate glium;
 extern crate log;
 
 extern crate env_logger;
+extern crate image;
 extern crate nalgebra;
+extern crate obj;
 extern crate time;
+
+extern crate genmesh;
 
 mod camera;
 mod draw;
+mod shader;
 
 use camera::Camera;
 use draw::{Cube, Grid};
@@ -16,29 +21,9 @@ use draw::{Cube, Grid};
 use glium::{glutin, Display, DisplayBuild, Surface};
 use glium::glutin::{ElementState, VirtualKeyCode};
 
-use nalgebra::{zero, BaseFloat, Mat4, Vec3};
+use nalgebra::{zero, BaseFloat, Vec3};
 
 const RELATIVE_ROTATION: bool = true;
-
-#[derive(Copy, Clone)]
-pub struct Vertex {
-    pub position: [f32; 3]
-}
-
-impl Vertex {
-    fn new(x: f32, y: f32, z: f32) -> Self {
-        Vertex { position: [x, y, z] }
-    }
-}
-
-fn get_rotation_mat(t: time::Timespec) -> Mat4<f32> {
-    let sec = (t.sec as f64) + ((t.nsec as f64)/1e9);
-
-    Mat4::new(sec.cos() as f32,  -sec.sin() as f32, 0., 0.,
-              sec.sin() as f32,  sec.cos() as f32,  0., 0.,
-              0.,                0.,                1., 0.,
-              0.,                0.,                0., 1.)
-}
 
 fn get_display_dim(display: &Display) -> (u32, u32) {
     match display.get_window().unwrap().get_inner_size() {
@@ -56,8 +41,6 @@ fn main() {
         .build_glium()
         .unwrap();
 
-    implement_vertex!(Vertex, position);
-
     let mut camera_pos = Vec3::new(0., 0., 1.);
     let mut camera = {
         let (w, h) = get_display_dim(&display);
@@ -65,27 +48,18 @@ fn main() {
         Camera::new(camera_pos.clone(), w / h)
     };
 
-    let grid = Grid::new(20);
-    let grid_req = grid.create_draw_request(&display);
-
-    let cube = Cube::new(0.25, zero());
-    let cube_req = cube.create_draw_request(&display);
+    let grid = Grid::new(&display, 20);
+    let cube = Cube::new(&display, 0.25, zero());
 
     let mut mouse_pressed = false;
     let mut old_mouse_coords = None;
 
+    let mut ctxt = draw::EngineContext::new();
     loop {
-        let proj_mat = camera.get_projection_matrix();
-        let rotate_mat = get_rotation_mat(time::get_time());
-        let view_mat = camera.get_view_matrix();
-        let grid_uniforms = uniform! { proj_mat: proj_mat, view_mat: view_mat };
-        let cube_uniforms = uniform! { proj_mat: proj_mat, view_mat: view_mat,
-                                       rotate_mat: rotate_mat };
-
         let mut target = display.draw();
         target.clear_color_and_depth((0., 0., 0., 1.), 1.);
-        draw::draw(&mut target, &grid_req, &grid_uniforms).unwrap();
-        draw::draw(&mut target, &cube_req, &cube_uniforms).unwrap();
+        ctxt.draw(&mut target, &display, &camera, &grid.parent).unwrap();
+        ctxt.draw(&mut target, &display, &camera, &cube.parent).unwrap();
         target.finish().unwrap();
 
         for ev in display.poll_events() {

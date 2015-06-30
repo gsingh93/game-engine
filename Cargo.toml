@@ -4,8 +4,11 @@ version = "0.1.0"
 authors = ["Gulshan Singh <gsingh2011@gmail.com>"]
 
 [dependencies]
-glium = "*"
-nalgebra = "*"
-time = "*"
 env_logger = "*"
+genmesh = "*"
+glium = "*"
+image = "*"
 log = "*"
+nalgebra = "*"
+obj = "*"
+time = "*"

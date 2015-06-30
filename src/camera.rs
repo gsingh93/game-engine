@@ -32,7 +32,7 @@ impl Camera {
         self.aspect_ratio = aspect_ratio;
     }
 
-    pub fn get_projection_matrix(&self) -> Mat4<f32> {
+    pub fn projection_matrix(&self) -> Mat4<f32> {
         let n = self.near;
         let f = self.far;
 
@@ -47,7 +47,7 @@ impl Camera {
                   0., 0., -1., 0.)
     }
 
-    pub fn get_view_matrix(&self) -> Mat4<f32> {
+    pub fn view_matrix(&self) -> Mat4<f32> {
         let t = &self.transform;
 
         // This is the camera position applied after the rotation
