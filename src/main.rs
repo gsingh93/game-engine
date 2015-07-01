@@ -73,14 +73,16 @@ fn main() {
                         VirtualKeyCode::R => {
                             camera_pos = Vec3::new(0., 0., 1.);
                             camera.set_abs_rotation(0., 0.);
+                            camera.set_fov(BaseFloat::frac_pi_2());
                         }
                         _ => ()
                     }
                     camera.set_pos(&camera_pos);
                 },
                 glutin::Event::MouseWheel(glutin::MouseScrollDelta::LineDelta(_, v)) => {
-                    camera_pos.z += v * 0.05;
-                    camera.set_pos(&camera_pos);
+                    let fov = camera.fov();
+                    let new_fov = nalgebra::clamp(fov + (v * 0.05), 0., BaseFloat::pi());
+                    camera.set_fov(new_fov);
                 },
                 glutin::Event::MouseMoved((x, y)) => {
                     if mouse_pressed {

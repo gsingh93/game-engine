@@ -23,6 +23,15 @@ impl Camera {
         }
     }
 
+    pub fn fov(&self) -> f32 {
+        self.fov
+    }
+
+    pub fn set_fov(&mut self, fov: f32) {
+        self.fov = fov;
+        debug!("Camera fov set to {:?}", fov);
+    }
+
     pub fn set_pos(&mut self, pos: &Vec3<f32>) {
         self.transform.set_col(3, Vec4::new(pos.x, pos.y, pos.z, 1.));
         debug!("Camera position set to {:?}", pos);
