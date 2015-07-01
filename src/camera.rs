@@ -51,6 +51,29 @@ impl Camera {
         debug!("Camera position set to {:?}", pos);
     }
 
+    pub fn translate(&mut self, diff: &Vec3<f32>) {
+        self.view_dirty.set(true);
+
+        let diff = Vec4::new(diff.x, diff.y, diff.z, 0.);
+
+        // Pull out just the rotation matrix and transpose it (invert it)
+        let mut t = self.transform;
+        t.set_col(3, Vec4::new(0., 0., 0., 1.));
+        t = nalgebra::transpose(&t);
+
+        // Multiply our translation amount by the inverse rotation to get the translation in
+        // normal, unrotated coordinates
+        let p = Vec4::new(dot(&diff, &t.col(0)),
+                          dot(&diff, &t.col(1)),
+                          dot(&diff, &t.col(2)),
+                          0.);
+        let mut pos = self.transform.col(3);
+        pos = pos + p;
+
+        self.transform.set_col(3, pos);
+        debug!("Camera position set to {:?}", pos);
+    }
+
     pub fn set_aspect_ratio(&mut self, aspect_ratio: f32) {
         self.proj_dirty.set(true);
 

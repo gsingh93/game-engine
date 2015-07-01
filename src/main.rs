@@ -104,11 +104,10 @@ fn main() {
         .build_glium()
         .unwrap();
 
-    let mut camera_pos = Vec3::new(0., 0., 1.);
     let camera = {
         let (w, h) = get_display_dim(&display);
         let (w, h) = (w as f32, h as f32);
-        Camera::new(camera_pos.clone(), w / h)
+        Camera::new(Vec3::new(0., 0., 1.), w / h)
     };
 
     let mut scene = Scene::new(camera);
@@ -126,18 +125,17 @@ fn main() {
             match ev {
                 glutin::Event::KeyboardInput(ElementState::Pressed, _, Some(key)) => {
                     match key {
-                        VirtualKeyCode::Up => camera_pos.y += 0.05,
-                        VirtualKeyCode::Down => camera_pos.y -= 0.05,
-                        VirtualKeyCode::Left => camera_pos.x -= 0.05,
-                        VirtualKeyCode::Right => camera_pos.x += 0.05,
+                        VirtualKeyCode::Up => scene.camera.translate(&Vec3::new(0., 0.05, 0.)),
+                        VirtualKeyCode::Down => scene.camera.translate(&Vec3::new(0., -0.05, 0.)),
+                        VirtualKeyCode::Left => scene.camera.translate(&Vec3::new(-0.05, 0., 0.)),
+                        VirtualKeyCode::Right => scene.camera.translate(&Vec3::new(0.05, 0., 0.)),
                         VirtualKeyCode::R => {
-                            camera_pos = Vec3::new(0., 0., 1.);
+                            scene.camera.set_pos(&Vec3::new(0., 0., 1.));
                             scene.camera.set_abs_rotation(0., 0.);
                             scene.camera.set_fov(BaseFloat::frac_pi_2());
                         }
                         _ => ()
                     }
-                    scene.camera.set_pos(&camera_pos);
                 },
                 glutin::Event::MouseWheel(glutin::MouseScrollDelta::LineDelta(_, v)) => {
                     let fov = scene.camera.fov();
