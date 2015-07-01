@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::{BufReader, Cursor, Read};
 use std::fs::File;
 use std::path::Path;
@@ -8,7 +7,7 @@ use camera::Camera;
 
 use genmesh;
 
-use glium::{DepthTest, DrawError, DrawParameters, Surface, Program, VertexBuffer};
+use glium::{DepthTest, DrawParameters, VertexBuffer};
 use glium::backend::Facade;
 use glium::index::{IndicesSource, NoIndices, PrimitiveType};
 use glium::texture::Texture2d;
@@ -89,17 +88,18 @@ impl<'a> ObjectBuilder<'a> {
     }
 }
 
+// FIXME: Use getters instead of public fields
 pub struct Object<'a> {
-    vertex_buffer: VertexBufferAny,
-    indices: IndicesSource<'a>,
-    draw_params: DrawParameters<'a>,
-    transform: Mat4<f32>,
-    shader_type: ShaderType,
+    pub vertex_buffer: VertexBufferAny,
+    pub indices: IndicesSource<'a>,
+    pub draw_params: DrawParameters<'a>,
+    pub transform: Mat4<f32>,
+    pub shader_type: ShaderType,
 }
 
-pub struct EngineContext {
-    vertex_shader: String,
-    shader_map: HashMap<ShaderType, String>,
+pub trait GameObject {
+    fn parent(&self) -> &Object;
+    fn construct_uniforms(&self, &Camera) -> UniformsVec;
 }
 
 struct UniformsVec<'a>(Vec<(&'static str, UniformValue<'a>)>);
@@ -111,37 +111,22 @@ impl<'b> Uniforms for UniformsVec<'b> {
     }
 }
 
-impl EngineContext {
-    pub fn new() -> Self {
-        let mut shader = String::new();
-        File::open("shaders/vertex.glsl").unwrap().read_to_string(&mut shader).unwrap();
-        EngineContext { vertex_shader: shader, shader_map: HashMap::new() }
-    }
-
-    pub fn draw<'a, F: Facade, S: Surface>(&mut self,
-                                           surface: &mut S,
-                                           facade: &F,
-                                           obj: &Object,
-                                           uniforms: &UniformsVec<'a>)
-                                           -> Result<(), DrawError> {
-        let &mut EngineContext { ref vertex_shader, ref mut shader_map } = self;
-        let fragment_shader = Self::get_shader(shader_map, obj.shader_type);
-        let program = Program::from_source(facade, vertex_shader,
-                                           fragment_shader, None).unwrap();
-        surface.draw(&obj.vertex_buffer, obj.indices.clone(), &program, uniforms, &obj.draw_params)
-    }
-
-    fn get_shader(shader_map: &mut HashMap<ShaderType, String>, shader_type: ShaderType) -> &str {
-        shader_map.entry(shader_type).or_insert_with(|| {
-            let mut shader = String::new();
-            File::open(shader_type.to_filename()).unwrap().read_to_string(&mut shader).unwrap();
-            shader
-        })
-    }
-}
-
 pub struct Grid<'a> {
     pub parent: Object<'a>,
+}
+
+impl<'a> GameObject for Grid<'a> {
+    fn parent(&self) -> &Object {
+        &self.parent
+    }
+
+    fn construct_uniforms(&self, camera: &Camera) -> UniformsVec {
+        UniformsVec(vec![
+            ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
+            ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
+            ("transform", UniformValue::Mat4(*self.parent().transform.as_array())),
+            ("color", UniformValue::Vec3([1., 1., 1.]))])
+    }
 }
 
 impl<'a> Grid<'a> {
@@ -176,19 +161,30 @@ impl<'a> Grid<'a> {
 
         Grid { parent: parent }
     }
-
-    pub fn construct_uniforms(&self, camera: &Camera) -> UniformsVec {
-        UniformsVec(vec![
-            ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
-            ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
-            ("transform", UniformValue::Mat4(*self.parent.transform.as_array())),
-            ("color", UniformValue::Vec3([1., 1., 1.]))])
-    }
 }
 
 pub struct Cube<'a> {
     pub parent: Object<'a>,
     texture: Texture2d,
+}
+
+impl<'a> GameObject for Cube<'a> {
+    fn parent(&self) -> &Object {
+        &self.parent
+    }
+
+    fn construct_uniforms(&self, camera: &Camera) -> UniformsVec {
+        let sampler = SamplerBehavior {
+            minify_filter: MinifySamplerFilter::Nearest,
+            magnify_filter: MagnifySamplerFilter::Nearest,
+            .. Default::default()
+        };
+        UniformsVec(vec![
+            ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
+            ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
+            ("transform", UniformValue::Mat4(*self.parent().transform.as_array())),
+            ("tex", UniformValue::Texture2d(&self.texture, Some(sampler)))])
+    }
 }
 
 impl<'a> Cube<'a> {
@@ -224,19 +220,6 @@ impl<'a> Cube<'a> {
                   sec.sin() as f32,  sec.cos() as f32,  0., 0.,
                   0.,                0.,                1., 0.,
                   0.,                0.,                0., 1.)
-    }
-
-    pub fn construct_uniforms(&self, camera: &Camera) -> UniformsVec {
-        let sampler = SamplerBehavior {
-            minify_filter: MinifySamplerFilter::Nearest,
-            magnify_filter: MagnifySamplerFilter::Nearest,
-            .. Default::default()
-        };
-        UniformsVec(vec![
-            ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
-            ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
-            ("transform", UniformValue::Mat4(*self.parent.transform.as_array())),
-            ("tex", UniformValue::Texture2d(&self.texture, Some(sampler)))])
     }
 }
 

@@ -15,13 +15,21 @@ mod camera;
 mod draw;
 mod shader;
 
-use camera::Camera;
-use draw::{Cube, Grid};
+use std::collections::HashMap;
+use std::io::Read;
+use std::fs::File;
 
-use glium::{glutin, Display, DisplayBuild, Surface};
+use camera::Camera;
+use draw::{Cube, Grid, GameObject};
+use shader::ShaderType;
+
+use glium::{glutin, Display, DisplayBuild, DrawError, Program, Surface};
+use glium::backend::Facade;
 use glium::glutin::{ElementState, VirtualKeyCode};
 
 use nalgebra::{zero, BaseFloat, Vec3};
+
+type Scene = Vec<Box<GameObject>>;
 
 const RELATIVE_ROTATION: bool = true;
 
@@ -29,6 +37,44 @@ fn get_display_dim(display: &Display) -> (u32, u32) {
     match display.get_window().unwrap().get_inner_size() {
         Some(dim) => dim,
         None => panic!("Couldn't get window dimensions")
+    }
+}
+
+pub struct EngineContext {
+    vertex_shader: String,
+    shader_map: HashMap<ShaderType, String>,
+}
+
+impl EngineContext {
+    pub fn new() -> Self {
+        let mut shader = String::new();
+        File::open("shaders/vertex.glsl").unwrap().read_to_string(&mut shader).unwrap();
+        EngineContext { vertex_shader: shader, shader_map: HashMap::new() }
+    }
+
+    pub fn draw<'a, F: Facade, S: Surface>(&mut self,
+                                           surface: &mut S,
+                                           facade: &F,
+                                           camera: &Camera,
+                                           obj: &Box<GameObject>)
+                                           -> Result<(), DrawError> {
+        let parent = obj.parent();
+        let uniforms = obj.construct_uniforms(&camera);
+
+        let &mut EngineContext { ref vertex_shader, ref mut shader_map } = self;
+        let fragment_shader = Self::get_shader(shader_map, parent.shader_type);
+        let program = Program::from_source(facade, vertex_shader,
+                                           fragment_shader, None).unwrap();
+        surface.draw(&parent.vertex_buffer, parent.indices.clone(), &program, &uniforms,
+                     &parent.draw_params)
+    }
+
+    fn get_shader(shader_map: &mut HashMap<ShaderType, String>, shader_type: ShaderType) -> &str {
+        shader_map.entry(shader_type).or_insert_with(|| {
+            let mut shader = String::new();
+            File::open(shader_type.to_filename()).unwrap().read_to_string(&mut shader).unwrap();
+            shader
+        })
     }
 }
 
@@ -48,18 +94,20 @@ fn main() {
         Camera::new(camera_pos.clone(), w / h)
     };
 
-    let grid = Grid::new(&display, 20);
-    let cube = Cube::new(&display, 0.25, zero());
+    let mut scene = Scene::new();
+    scene.push(Box::new(Grid::new(&display, 20)));
+    scene.push(Box::new(Cube::new(&display, 0.25, zero())));
 
     let mut mouse_pressed = false;
     let mut old_mouse_coords = None;
 
-    let mut ctxt = draw::EngineContext::new();
+    let mut ctxt = EngineContext::new();
     loop {
         let mut target = display.draw();
         target.clear_color_and_depth((0., 0., 0., 1.), 1.);
-        ctxt.draw(&mut target, &display, &grid.parent, &grid.construct_uniforms(&camera)).unwrap();
-        ctxt.draw(&mut target, &display, &cube.parent, &cube.construct_uniforms(&camera)).unwrap();
+        for obj in scene.iter() {
+            ctxt.draw(&mut target, &display, &camera, obj).unwrap();
+        }
         target.finish().unwrap();
 
         for ev in display.poll_events() {
