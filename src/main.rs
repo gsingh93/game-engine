@@ -113,7 +113,7 @@ fn main() {
 
     let mut scene = Scene::new(camera);
     scene.add(Grid::new(&display, 20));
-    scene.add(Cube::new(&display, 0.25, zero()));
+    scene.add(Cube::new(&display, 1., zero()));
 
     let mut mouse_pressed = false;
     let mut old_mouse_coords = None;

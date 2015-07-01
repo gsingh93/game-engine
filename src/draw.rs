@@ -132,14 +132,14 @@ impl<'a> GameObject for Grid<'a> {
 impl<'a> Grid<'a> {
     pub fn new<F: Facade>(facade: &F, dim: u16) -> Self {
         let mut shape = Vec::new();
-        let len = dim as f32 / 10.;
+        let len = dim as f32;
         for i in 0..dim * 2 + 1 {
             let i = i as f32;
-            let v1 = Vertex::new(-len + i * 0.1, -len, 0.);
-            let v2 = Vertex::new(-len + i * 0.1, len, 0.);
+            let v1 = Vertex::new(-len + i, -len, 0.);
+            let v2 = Vertex::new(-len + i, len, 0.);
 
-            let v3 = Vertex::new(-len, -len + i * 0.1, 0.);
-            let v4 = Vertex::new(len, -len + i * 0.1, 0.);
+            let v3 = Vertex::new(-len, -len + i, 0.);
+            let v4 = Vertex::new(len, -len + i, 0.);
 
             shape.push(v1);
             shape.push(v2);
