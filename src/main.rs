@@ -141,7 +141,8 @@ fn main() {
                 },
                 glutin::Event::MouseWheel(glutin::MouseScrollDelta::LineDelta(_, v)) => {
                     let fov = scene.camera.fov();
-                    let new_fov = nalgebra::clamp(fov + (v * 0.05), 0., BaseFloat::pi());
+                    let frac: f32 = (f32::pi() - fov) / f32::pi();
+                    let new_fov = f32::max(0., fov + 0.05 * frac * v);
                     scene.camera.set_fov(new_fov);
                 },
                 glutin::Event::MouseMoved((x, y)) => {
