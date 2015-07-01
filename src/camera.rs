@@ -95,6 +95,8 @@ impl Camera {
 
     pub fn projection_matrix(&self) -> Mat4<f32> {
         if self.proj_dirty.get() {
+            self.proj_dirty.set(false);
+
             let n = self.near;
             let f = self.far;
 
@@ -113,6 +115,7 @@ impl Camera {
 
     pub fn view_matrix(&self) -> Mat4<f32> {
         if self.view_dirty.get() {
+            self.view_dirty.set(false);
             let t = &self.transform;
 
             // This is the camera position applied after the rotation
