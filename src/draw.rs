@@ -12,7 +12,8 @@ use glium::{DepthTest, DrawError, DrawParameters, Surface, Program, VertexBuffer
 use glium::backend::Facade;
 use glium::index::{IndicesSource, NoIndices, PrimitiveType};
 use glium::texture::Texture2d;
-use glium::uniforms::{UniformValue, Uniforms};
+use glium::uniforms::{MinifySamplerFilter, MagnifySamplerFilter, SamplerBehavior, UniformValue,
+                      Uniforms};
 use glium::vertex::VertexBufferAny;
 
 use image;
@@ -226,11 +227,16 @@ impl<'a> Cube<'a> {
     }
 
     pub fn construct_uniforms(&self, camera: &Camera) -> UniformsVec {
+        let sampler = SamplerBehavior {
+            minify_filter: MinifySamplerFilter::Nearest,
+            magnify_filter: MagnifySamplerFilter::Nearest,
+            .. Default::default()
+        };
         UniformsVec(vec![
             ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
             ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
             ("transform", UniformValue::Mat4(*self.parent.transform.as_array())),
-            ("tex", UniformValue::Texture2d(&self.texture, None))])
+            ("tex", UniformValue::Texture2d(&self.texture, Some(sampler)))])
     }
 }
 
