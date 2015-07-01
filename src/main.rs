@@ -114,7 +114,8 @@ fn main() {
     scene.add(Grid::new(&display, 20));
     scene.add(Cube::new(&display, 1., zero()));
 
-    let mut mouse_pressed = false;
+    let mut right_mouse_pressed = false;
+    let mut left_mouse_pressed = false;
     let mut old_mouse_coords = None;
 
     let mut ctxt = EngineContext::new(display);
@@ -125,10 +126,6 @@ fn main() {
             match ev {
                 glutin::Event::KeyboardInput(ElementState::Pressed, _, Some(key)) => {
                     match key {
-                        VirtualKeyCode::Up => scene.camera.translate(&Vec3::new(0., 0.05, 0.)),
-                        VirtualKeyCode::Down => scene.camera.translate(&Vec3::new(0., -0.05, 0.)),
-                        VirtualKeyCode::Left => scene.camera.translate(&Vec3::new(-0.05, 0., 0.)),
-                        VirtualKeyCode::Right => scene.camera.translate(&Vec3::new(0.05, 0., 0.)),
                         VirtualKeyCode::R => {
                             scene.camera.set_pos(&Vec3::new(0., 0., 1.));
                             scene.camera.set_abs_rotation(0., 0.);
@@ -144,7 +141,8 @@ fn main() {
                     scene.camera.set_fov(new_fov);
                 },
                 glutin::Event::MouseMoved((x, y)) => {
-                    if mouse_pressed {
+                    if right_mouse_pressed {
+                        // Rotation
                         let (x, y) = (x as f32, y as f32);
                         let (w, h) = get_display_dim(&ctxt.display);
                         let (w, h) = (w as f32, h as f32);
@@ -163,16 +161,29 @@ fn main() {
                             }
                             old_mouse_coords = Some((x, y));
                         }
+                    } else if left_mouse_pressed {
+                        // Translation
+                        let (x, y) = (x as f32, y as f32);
+                        if let Some((x_old, y_old)) = old_mouse_coords {
+                            let diff = Vec3::new(x_old - x, y - y_old, 0.) * 0.003 as f32;
+                            scene.camera.translate(&diff);
+                        }
+                        old_mouse_coords = Some((x, y));
                     }
                 },
-                glutin::Event::MouseInput(state, glutin::MouseButton::Left) => {
-                    mouse_pressed = if state == ElementState::Pressed {
-                        true
-                    } else {
+                glutin::Event::MouseInput(state, button) => {
+                    if state == ElementState::Released {
                         old_mouse_coords = None;
-                        false
                     };
-                },
+
+                    match button {
+                        glutin::MouseButton::Left =>
+                            left_mouse_pressed = state == ElementState::Pressed,
+                        glutin::MouseButton::Right =>
+                            right_mouse_pressed = state == ElementState::Pressed,
+                        _ => ()
+                    }
+                }
                 glutin::Event::Resized(x, y) => {
                     scene.camera.set_aspect_ratio(x as f32 / y as f32);
                 },
