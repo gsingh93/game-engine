@@ -257,7 +257,7 @@ impl<'a> Text<'a> {
 
         let freetype = ft::Library::init().unwrap();
         let face = freetype.new_face("resources/FiraSans-Regular.ttf", 0).unwrap();
-        face.set_pixel_sizes(0, 48).unwrap();
+        face.set_pixel_sizes(0, 16).unwrap();
 
         let mut x = x;
         let mut y = y;
@@ -321,7 +321,7 @@ impl<'a> Char<'a> {
     fn new(display: &Display, x: f32, y: f32, left: f32, _: f32, width: f32, height: f32,
            sx: f32, sy: f32, texture: Texture2d) -> Self {
         let x = x + left * sx;
-        let y = y;// - top * sy;
+        let y = y;// - top * sy; // FIXME
         let width = width * sx;
         let height = height * sy;
 

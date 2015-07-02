@@ -18,6 +18,7 @@ mod shader;
 use std::collections::HashMap;
 use std::io::Read;
 use std::fs::File;
+use std::thread;
 
 use camera::Camera;
 use draw::{Cube, Grid, GameObject, Text};
@@ -123,16 +124,16 @@ fn main() {
     scene.add(Cube::new(&display, 1., zero()));
 
     // FIXME: Text needs to go last
-    scene.add_text(Text::new(&display, -0.9, 0., "hello"));
+    scene.add_text(Text::new(&display, -0.9, -0.9, "Frame rate: 60fps"));
 
     let mut right_mouse_pressed = false;
     let mut left_mouse_pressed = false;
     let mut old_mouse_coords = None;
 
     let mut ctxt = EngineContext::new(display);
+    let mut accumulator = 0;
+    let mut previous_time = time::precise_time_ns();
     loop {
-        scene.draw(&mut ctxt);
-
         for ev in ctxt.display.poll_events() {
             match ev {
                 glutin::Event::KeyboardInput(ElementState::Pressed, _, Some(key)) => {
@@ -201,6 +202,28 @@ fn main() {
                 glutin::Event::Closed => return,
                 _ => ()
             }
+        }
+
+        let now = time::precise_time_ns();
+        let delta = now - previous_time;
+        accumulator += delta;
+        previous_time = now;
+
+        const FPS: u64 = 60;
+        const FIXED_TIME_STAMP: u64 = 10e9 as u64 / FPS;
+        if accumulator >= FIXED_TIME_STAMP {
+            while accumulator >= FIXED_TIME_STAMP {
+                accumulator -= FIXED_TIME_STAMP;
+                // TODO: Update
+            }
+            scene.draw(&mut ctxt);
+        }
+
+        // A half-assed attempt to not use up the entire CPU and still keep the frame rate
+        let sleep_time = ((FIXED_TIME_STAMP - accumulator) / 1000000) as i32;
+        if sleep_time > 30 {
+            let sleep_time = sleep_time * 3 / 5;
+            thread::sleep_ms(sleep_time as u32);
         }
     }
 }
