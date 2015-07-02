@@ -5,6 +5,7 @@ authors = ["Gulshan Singh <gsingh2011@gmail.com>"]
 
 [dependencies]
 env_logger = "*"
+freetype-rs = "*"
 genmesh = "*"
 glium = "*"
 image = "*"

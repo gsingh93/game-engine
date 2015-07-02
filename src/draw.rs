@@ -1,18 +1,22 @@
+use std::borrow::Cow;
 use std::io::{BufReader, Cursor, Read};
 use std::fs::File;
 use std::path::Path;
 
-use shader::ShaderType;
+use shader::{FragmentShaderType, VertexShaderType};
 use camera::Camera;
+
+use freetype as ft;
 
 use genmesh;
 
-use glium::{DepthTest, DrawParameters, VertexBuffer};
+use glium::{BlendingFunction, DepthTest, Display, DrawParameters, LinearBlendingFactor,
+            VertexBuffer};
 use glium::backend::Facade;
 use glium::index::{IndicesSource, NoIndices, PrimitiveType};
-use glium::texture::Texture2d;
-use glium::uniforms::{MinifySamplerFilter, MagnifySamplerFilter, SamplerBehavior, UniformValue,
-                      Uniforms};
+use glium::texture::{ClientFormat, RawImage2d, Texture2d};
+use glium::uniforms::{MinifySamplerFilter, MagnifySamplerFilter, SamplerBehavior,
+                      SamplerWrapFunction, UniformValue, Uniforms};
 use glium::vertex::VertexBufferAny;
 
 use image;
@@ -23,7 +27,11 @@ use obj;
 
 use time;
 
-#[derive(Copy, Clone)]
+const COLOR_TYPE: u32 = 0;
+const TEXTURE_RGB_TYPE: u32 = 1;
+const TEXTURE_ALPHA_TYPE: u32 = 2;
+
+#[derive(Copy, Clone, Debug)]
 struct Vertex {
     position: [f32; 3],
     tex_coord: [f32; 2],
@@ -33,6 +41,11 @@ impl Vertex {
     fn new(x: f32, y: f32, z: f32) -> Self {
         Vertex { position: [x, y, z], tex_coord: [0., 0.] }
     }
+
+    fn with_texture(x: f32, y: f32, z: f32, u: f32, v: f32) -> Self {
+        Vertex { position: [x, y, z], tex_coord: [u, v] }
+    }
+
 }
 
 implement_vertex!(Vertex, position, tex_coord);
@@ -42,7 +55,8 @@ pub struct ObjectBuilder<'a> {
     indices: IndicesSource<'a>,
     draw_params: Option<DrawParameters<'a>>,
     transform: Option<Mat4<f32>>,
-    shader_type: Option<ShaderType>,
+    vert_shader_type: Option<VertexShaderType>,
+    frag_shader_type: Option<FragmentShaderType>,
 }
 
 impl<'a> ObjectBuilder<'a> {
@@ -52,7 +66,8 @@ impl<'a> ObjectBuilder<'a> {
             indices: indices.into(),
             draw_params: None,
             transform: None,
-            shader_type: None,
+            vert_shader_type: None,
+            frag_shader_type: None,
         }
     }
 
@@ -72,8 +87,13 @@ impl<'a> ObjectBuilder<'a> {
         self
     }
 
-    pub fn shader(mut self, shader_type: ShaderType) -> Self {
-        self.shader_type = Some(shader_type);
+    pub fn vert_shader(mut self, vert_shader_type: VertexShaderType) -> Self {
+        self.vert_shader_type = Some(vert_shader_type);
+        self
+    }
+
+    pub fn frag_shader(mut self, frag_shader_type: FragmentShaderType) -> Self {
+        self.frag_shader_type = Some(frag_shader_type);
         self
     }
 
@@ -83,7 +103,8 @@ impl<'a> ObjectBuilder<'a> {
             indices: self.indices,
             draw_params: self.draw_params.unwrap_or_else(|| Default::default()),
             transform: self.transform.unwrap_or_else(|| nalgebra::new_identity(4)),
-            shader_type: self.shader_type.unwrap_or(ShaderType::UnlitColor),
+            vert_shader_type: self.vert_shader_type.unwrap_or(VertexShaderType::Perspective),
+            frag_shader_type: self.frag_shader_type.unwrap_or(FragmentShaderType::Unlit),
         }
     }
 }
@@ -94,7 +115,8 @@ pub struct Object<'a> {
     pub indices: IndicesSource<'a>,
     pub draw_params: DrawParameters<'a>,
     pub transform: Mat4<f32>,
-    pub shader_type: ShaderType,
+    pub vert_shader_type: VertexShaderType,
+    pub frag_shader_type: FragmentShaderType,
 }
 
 pub trait GameObject {
@@ -112,7 +134,7 @@ impl<'b> Uniforms for UniformsVec<'b> {
 }
 
 pub struct Grid<'a> {
-    pub parent: Object<'a>,
+    parent: Object<'a>,
 }
 
 impl<'a> GameObject for Grid<'a> {
@@ -122,6 +144,7 @@ impl<'a> GameObject for Grid<'a> {
 
     fn construct_uniforms(&self, camera: &Camera) -> UniformsVec {
         UniformsVec(vec![
+            ("type", UniformValue::UnsignedInt(COLOR_TYPE)),
             ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
             ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
             ("transform", UniformValue::Mat4(*self.parent().transform.as_array())),
@@ -164,7 +187,7 @@ impl<'a> Grid<'a> {
 }
 
 pub struct Cube<'a> {
-    pub parent: Object<'a>,
+    parent: Object<'a>,
     texture: Texture2d,
 }
 
@@ -180,6 +203,7 @@ impl<'a> GameObject for Cube<'a> {
             .. Default::default()
         };
         UniformsVec(vec![
+            ("type", UniformValue::UnsignedInt(TEXTURE_RGB_TYPE)),
             ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
             ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
             ("transform", UniformValue::Mat4(*self.parent().transform.as_array())),
@@ -206,7 +230,6 @@ impl<'a> Cube<'a> {
         let parent = ObjectBuilder::from_obj(facade, "resources/cube.obj",
                                              NoIndices(PrimitiveType::TrianglesList))
             .draw_params(params)
-            .shader(ShaderType::UnlitTexture)
             .transform(transform)
             .build();
 
@@ -220,6 +243,114 @@ impl<'a> Cube<'a> {
                   sec.sin() as f32,  sec.cos() as f32,  0., 0.,
                   0.,                0.,                1., 0.,
                   0.,                0.,                0., 1.)
+    }
+}
+
+pub struct Text<'a> {
+    chars: Vec<Char<'a>>
+}
+
+impl<'a> Text<'a> {
+    pub fn new(display: &Display, x: f32, y: f32, text: &str) -> Self {
+        let (w, h) = ::get_display_dim(display);
+        let (sx, sy) = (2. / w as f32, 2. / h as f32);
+
+        let freetype = ft::Library::init().unwrap();
+        let face = freetype.new_face("resources/FiraSans-Regular.ttf", 0).unwrap();
+        face.set_pixel_sizes(0, 48).unwrap();
+
+        let mut x = x;
+        let mut y = y;
+        let mut chars = Vec::new();
+        for c in text.chars() {
+            face.load_char(c as usize, ft::face::RENDER).unwrap();
+            let g = face.glyph();
+
+            let bitmap = g.bitmap();
+            let texture = Texture2d::new(display, RawImage2d {
+                data: Cow::Borrowed(bitmap.buffer()),
+                width: bitmap.width() as u32, height: bitmap.rows() as u32,
+                format: ClientFormat::U8
+            });
+            chars.push(Char::new(display,
+                                 x, y,
+                                 g.bitmap_left() as f32, g.bitmap_top() as f32,
+                                 bitmap.width() as f32, bitmap.rows() as f32,
+                                 sx, sy,
+                                 texture));
+
+            x += (g.advance().x >> 6) as f32 * sx;
+            y += (g.advance().y >> 6) as f32 * sy;
+        }
+
+        Text { chars: chars }
+    }
+
+    pub fn into_chars(self) -> Vec<Char<'a>> {
+        self.chars
+    }
+}
+
+pub struct Char<'a> {
+    parent: Object<'a>,
+    texture: Texture2d
+}
+
+impl<'a> GameObject for Char<'a> {
+    fn parent(&self) -> &Object {
+        &self.parent
+    }
+
+    fn construct_uniforms(&self, camera: &Camera) -> UniformsVec {
+        let clamp = SamplerWrapFunction::Clamp;
+        let sampler = SamplerBehavior {
+            wrap_function: (clamp, clamp, clamp),
+            .. Default::default()
+        };
+        UniformsVec(vec![
+            ("type", UniformValue::UnsignedInt(TEXTURE_ALPHA_TYPE)),
+            ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
+            ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
+            ("transform", UniformValue::Mat4(*self.parent().transform.as_array())),
+            ("color", UniformValue::Vec3([0., 1., 0.])),
+            ("tex", UniformValue::Texture2d(&self.texture, Some(sampler)))])
+    }
+}
+
+impl<'a> Char<'a> {
+    fn new(display: &Display, x: f32, y: f32, left: f32, _: f32, width: f32, height: f32,
+           sx: f32, sy: f32, texture: Texture2d) -> Self {
+        let x = x + left * sx;
+        let y = y;// - top * sy;
+        let width = width * sx;
+        let height = height * sy;
+
+        // FIXME: Properly handle pitch
+        // TODO: What is the correct z value?
+        let v1 = Vertex::with_texture(x, y, -0.9, 0., 1.);
+        let v2 = Vertex::with_texture(x, y + height, -0.9, 0., 0.);
+        let v3 = Vertex::with_texture(x + width, y, -0.9, 1., 1.);
+        let v4 = Vertex::with_texture(x + width, y + height, -0.9, 1., 0.);
+
+        let shape = vec![v1, v2, v3, v2, v3, v4];
+        let vb = VertexBuffer::new(display, shape).into_vertex_buffer_any();
+
+        let params = DrawParameters {
+            // FIXME: This messes with the alpha blending
+            // depth_test: DepthTest::IfLess,
+            // depth_write: true,
+            blending_function: Some(BlendingFunction::Addition {
+                source: LinearBlendingFactor::SourceAlpha,
+                destination: LinearBlendingFactor::OneMinusSourceAlpha
+            }),
+            .. Default::default()
+        };
+
+        let parent = ObjectBuilder::new(vb, NoIndices(PrimitiveType::TrianglesList))
+            .draw_params(params)
+            .vert_shader(VertexShaderType::Gui)
+            .build();
+        Char { parent: parent, texture: texture }
     }
 }
 

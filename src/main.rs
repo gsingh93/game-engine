@@ -4,12 +4,12 @@ extern crate glium;
 extern crate log;
 
 extern crate env_logger;
+extern crate freetype;
+extern crate genmesh;
 extern crate image;
 extern crate nalgebra;
 extern crate obj;
 extern crate time;
-
-extern crate genmesh;
 
 mod camera;
 mod draw;
@@ -20,8 +20,8 @@ use std::io::Read;
 use std::fs::File;
 
 use camera::Camera;
-use draw::{Cube, Grid, GameObject};
-use shader::ShaderType;
+use draw::{Cube, Grid, GameObject, Text};
+use shader::{ShaderType, FragmentShaderType, VertexShaderType};
 
 use glium::{glutin, Display, DisplayBuild, DrawError, Program, Surface};
 use glium::glutin::{ElementState, VirtualKeyCode};
@@ -29,6 +29,7 @@ use glium::glutin::{ElementState, VirtualKeyCode};
 use nalgebra::{zero, BaseFloat, Vec3};
 
 struct Scene {
+    // TODO: Do we want this to be GameObject + 'a?
     objects: Vec<Box<GameObject>>,
     camera: Camera,
 }
@@ -50,11 +51,17 @@ impl Scene {
     fn add<G: GameObject + 'static>(&mut self, object: G) {
         self.objects.push(Box::new(object));
     }
+
+    fn add_text(&mut self, text: Text<'static>) {
+        for c in text.into_chars() {
+            self.objects.push(Box::new(c));
+        }
+    }
 }
 
 const RELATIVE_ROTATION: bool = true;
 
-fn get_display_dim(display: &Display) -> (u32, u32) {
+pub fn get_display_dim(display: &Display) -> (u32, u32) {
     match display.get_window().unwrap().get_inner_size() {
         Some(dim) => dim,
         None => panic!("Couldn't get window dimensions")
@@ -63,15 +70,14 @@ fn get_display_dim(display: &Display) -> (u32, u32) {
 
 pub struct EngineContext {
     display: Display,
-    vertex_shader: String,
-    shader_map: HashMap<ShaderType, String>,
+    vert_shader_map: HashMap<VertexShaderType, String>,
+    frag_shader_map: HashMap<FragmentShaderType, String>,
 }
 
 impl EngineContext {
     pub fn new(display: Display) -> Self {
-        let mut shader = String::new();
-        File::open("shaders/vertex.glsl").unwrap().read_to_string(&mut shader).unwrap();
-        EngineContext { display: display, vertex_shader: shader, shader_map: HashMap::new() }
+        EngineContext { display: display, vert_shader_map: HashMap::new(),
+                        frag_shader_map: HashMap::new() }
     }
 
     pub fn draw<S: Surface>(&mut self, surface: &mut S, camera: &Camera,
@@ -79,14 +85,16 @@ impl EngineContext {
         let parent = obj.parent();
         let uniforms = obj.construct_uniforms(&camera);
 
-        let &mut EngineContext { ref display, ref vertex_shader, ref mut shader_map } = self;
-        let fragment_shader = Self::get_shader(shader_map, parent.shader_type);
+        let &mut EngineContext { ref display, ref mut vert_shader_map,
+                                 ref mut frag_shader_map } = self;
+        let vertex_shader = Self::get_shader(vert_shader_map, parent.vert_shader_type);
+        let fragment_shader = Self::get_shader(frag_shader_map, parent.frag_shader_type);
         let program = Program::from_source(display, vertex_shader, fragment_shader, None).unwrap();
         surface.draw(&parent.vertex_buffer, parent.indices.clone(), &program, &uniforms,
                      &parent.draw_params)
     }
 
-    fn get_shader(shader_map: &mut HashMap<ShaderType, String>, shader_type: ShaderType) -> &str {
+    fn get_shader<S: ShaderType>(shader_map: &mut HashMap<S, String>, shader_type: S) -> &str {
         shader_map.entry(shader_type).or_insert_with(|| {
             let mut shader = String::new();
             File::open(shader_type.to_filename()).unwrap().read_to_string(&mut shader).unwrap();
@@ -113,6 +121,9 @@ fn main() {
     let mut scene = Scene::new(camera);
     scene.add(Grid::new(&display, 20));
     scene.add(Cube::new(&display, 1., zero()));
+
+    // FIXME: Text needs to go last
+    scene.add_text(Text::new(&display, -0.9, 0., "hello"));
 
     let mut right_mouse_pressed = false;
     let mut left_mouse_pressed = false;
