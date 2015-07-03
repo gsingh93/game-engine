@@ -212,7 +212,9 @@ fn main() {
     let mut old_mouse_coords = None;
 
     let mut accumulator = 0;
+    let mut nframes = 0;
     let mut previous_time = time::precise_time_ns();
+    let mut target_time = previous_time + 1e9 as u64;
     loop {
         for ev in ctxt.display.poll_events() {
             match ev {
@@ -289,21 +291,21 @@ fn main() {
         accumulator += delta;
         previous_time = now;
 
-        const FPS: u64 = 60;
-        const FIXED_TIME_STAMP: u64 = 10e9 as u64 / FPS;
+        const FPS: u64 = 30;
+        const FIXED_TIME_STAMP: u64 = 1e9 as u64 / FPS;
         if accumulator >= FIXED_TIME_STAMP {
             while accumulator >= FIXED_TIME_STAMP {
                 accumulator -= FIXED_TIME_STAMP;
                 scene.update();
             }
             scene.draw(&mut ctxt);
-        }
-
-        // A half-assed attempt to not use up the entire CPU and still keep the frame rate
-        let sleep_time = ((FIXED_TIME_STAMP - accumulator) / 1000000) as i32;
-        if sleep_time > 30 {
-            let sleep_time = sleep_time * 3 / 5;
-            thread::sleep_ms(sleep_time as u32);
+            nframes += 1;
+            let now = time::precise_time_ns();
+            if now > target_time {
+                target_time = now + 1e9 as u64;
+                debug!("fps: {}", nframes);
+                nframes = 0;
+            }
         }
     }
 }
