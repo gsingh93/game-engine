@@ -18,6 +18,7 @@ mod shader;
 use std::collections::HashMap;
 use std::io::Read;
 use std::fs::File;
+use std::mem;
 use std::thread;
 
 use camera::Camera;
@@ -29,34 +30,45 @@ use glium::glutin::{ElementState, VirtualKeyCode};
 
 use nalgebra::{zero, BaseFloat, Vec3};
 
-struct Scene {
+struct Scene<'a> {
     // TODO: Do we want this to be GameObject + 'a?
-    objects: Vec<Box<GameObject>>,
+    named_objects: HashMap<String, Box<GameObject + 'a>>,
+    unamed_objects: Vec<Box<GameObject + 'a>>,
     camera: Camera,
 }
 
-impl Scene {
+impl<'a> Scene<'a> {
     fn new(camera: Camera) -> Self {
-        Scene { camera: camera, objects: Vec::new() }
+        Scene { camera: camera, named_objects: HashMap::new(), unamed_objects: Vec::new() }
     }
 
     fn draw(&self, ctxt: &mut EngineContext) {
         let mut target = ctxt.display.draw();
         target.clear_color_and_depth((0., 0., 0., 1.), 1.);
-        for obj in self.objects.iter() {
+        for obj in self.named_objects.values().chain(self.unamed_objects.iter()) {
             ctxt.draw(&mut target, &self.camera, obj).unwrap();
         }
         target.finish().unwrap();
     }
 
-    fn add<G: GameObject + 'static>(&mut self, object: G) {
-        self.objects.push(Box::new(object));
+    fn add<G: GameObject + 'a>(&mut self, object: G) {
+        if object.name().is_empty() {
+            self.unamed_objects.push(Box::new(object));
+        } else {
+            assert!(self.named_objects.insert(object.name().to_owned(),
+                                              Box::new(object)).is_none(),
+                    "Duplicate object name");
+        }
     }
 
     fn add_text(&mut self, text: Text<'static>) {
         for c in text.into_chars() {
-            self.objects.push(Box::new(c));
+            self.add(c);
         }
+    }
+
+    unsafe fn get_object<T: GameObject>(&self, name: &str) -> Option<&T> {
+        self.named_objects.get(name).map(|o| mem::transmute(o))
     }
 }
 
@@ -120,7 +132,9 @@ fn main() {
     };
 
     let mut scene = Scene::new(camera);
-    scene.add(Grid::new(&display, 20));
+    let mut g = Grid::new(&display, 20);
+    g.parent.name = "grid".to_owned();
+    scene.add(g);
     scene.add(Cube::new(&display, 1., zero()));
 
     // FIXME: Text needs to go last

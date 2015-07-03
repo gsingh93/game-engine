@@ -99,6 +99,7 @@ impl<'a> ObjectBuilder<'a> {
 
     pub fn build(self) -> Object<'a> {
         Object {
+            name: "".to_owned(), // FIXME: Use an Option here?
             vertex_buffer: self.vertex_buffer,
             indices: self.indices,
             draw_params: self.draw_params.unwrap_or_else(|| Default::default()),
@@ -111,6 +112,7 @@ impl<'a> ObjectBuilder<'a> {
 
 // FIXME: Use getters instead of public fields
 pub struct Object<'a> {
+    pub name: String,
     pub vertex_buffer: VertexBufferAny,
     pub indices: IndicesSource<'a>,
     pub draw_params: DrawParameters<'a>,
@@ -120,6 +122,10 @@ pub struct Object<'a> {
 }
 
 pub trait GameObject {
+    fn name(&self) -> &str {
+        &self.parent().name
+    }
+
     fn parent(&self) -> &Object;
     fn construct_uniforms(&self, &Camera) -> UniformsVec;
 }
@@ -134,7 +140,7 @@ impl<'b> Uniforms for UniformsVec<'b> {
 }
 
 pub struct Grid<'a> {
-    parent: Object<'a>,
+    pub parent: Object<'a>,
 }
 
 impl<'a> GameObject for Grid<'a> {
