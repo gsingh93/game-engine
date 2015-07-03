@@ -124,7 +124,7 @@ pub trait GameObject {
     fn name(&self) -> &str {
         &self.parent().name
     }
-
+    fn update(&mut self) {}
     fn parent(&self) -> &Object;
     fn construct_uniforms(&self, &Camera) -> UniformsVec;
 }
@@ -199,6 +199,12 @@ pub struct Cube<'a> {
 impl<'a> GameObject for Cube<'a> {
     fn parent(&self) -> &Object {
         &self.parent
+    }
+
+    fn update(&mut self) {
+        let mut rot_mat = Self::get_rotation_mat(time::get_time());
+        rot_mat.set_col(3, self.parent.transform.col(3));
+        self.parent.transform = rot_mat;
     }
 
     fn construct_uniforms(&self, camera: &Camera) -> UniformsVec {

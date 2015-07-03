@@ -46,6 +46,13 @@ impl<'a> Scene<'a> {
         Scene { camera: camera, named_objects: HashMap::new(), unamed_objects: Vec::new() }
     }
 
+    fn update(&mut self) {
+        for obj in self.named_objects.iter_mut().map(|(_, v)| v)
+            .chain(self.unamed_objects.iter_mut()) {
+            obj.update();
+        }
+    }
+
     fn draw(&self, ctxt: &mut EngineContext) {
         let mut target = ctxt.display.draw();
         target.clear_color_and_depth((0., 0., 0., 1.), 1.);
@@ -287,7 +294,7 @@ fn main() {
         if accumulator >= FIXED_TIME_STAMP {
             while accumulator >= FIXED_TIME_STAMP {
                 accumulator -= FIXED_TIME_STAMP;
-                // TODO: Update
+                scene.update();
             }
             scene.draw(&mut ctxt);
         }
