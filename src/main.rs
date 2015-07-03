@@ -15,18 +15,22 @@ mod camera;
 mod draw;
 mod shader;
 
+use std::{mem, thread};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::Read;
 use std::fs::File;
-use std::mem;
-use std::thread;
+use std::rc::Rc;
 
 use camera::Camera;
 use draw::{Cube, Grid, GameObject, Text};
 use shader::{ShaderType, FragmentShaderType, VertexShaderType};
 
+use freetype as ft;
+
 use glium::{glutin, Display, DisplayBuild, DrawError, Program, Surface};
 use glium::glutin::{ElementState, VirtualKeyCode};
+use glium::texture::{ClientFormat, RawImage2d, Texture2d};
 
 use nalgebra::{zero, BaseFloat, Vec3};
 
@@ -85,24 +89,78 @@ pub struct EngineContext {
     display: Display,
     vert_shader_map: HashMap<VertexShaderType, String>,
     frag_shader_map: HashMap<FragmentShaderType, String>,
+    texture_cache: TextureCache,
+}
+
+pub struct TextureCache {
+    cache: HashMap<&'static str, Rc<Texture2d>>,
+    glyph_cache: HashMap<char, Rc<Character>>,
+}
+
+pub struct Character {
+    left: f32,
+    top: f32,
+    width: f32,
+    height: f32,
+    advance_x: f32,
+    advance_y: f32,
+    texture: Texture2d,
+}
+
+impl TextureCache {
+    fn new() -> Self {
+        TextureCache { cache: HashMap::new(), glyph_cache: HashMap::new() }
+    }
+
+    fn get_texture(&mut self, display: &Display, name: &'static str) -> Rc<Texture2d> {
+        self.cache.entry(name).or_insert_with(|| {
+            let f = File::open(name).unwrap();
+            let image = image::load(f, image::PNG).unwrap();
+            Rc::new(Texture2d::new(display, image))
+        }).clone()
+    }
+
+    fn get_glyph(&mut self, display: &Display, face: &ft::Face, c: char) -> Rc<Character> {
+        self.glyph_cache.entry(c).or_insert_with(|| {
+            face.load_char(c as usize, ft::face::RENDER).unwrap();
+            let g = face.glyph();
+
+            let bitmap = g.bitmap();
+            Rc::new(Character {
+                left: g.bitmap_left() as f32,
+                top: g.bitmap_top() as f32,
+                width: bitmap.width() as f32,
+                height: bitmap.rows() as f32,
+                advance_x: (g.advance().x >> 6) as f32,
+                advance_y: (g.advance().y >> 6) as f32,
+                texture: Texture2d::new(display, RawImage2d {
+                    data: Cow::Borrowed(bitmap.buffer()),
+                    width: bitmap.width() as u32, height: bitmap.rows() as u32,
+                    format: ClientFormat::U8
+                })
+            })
+        }).clone()
+    }
 }
 
 impl EngineContext {
     pub fn new(display: Display) -> Self {
         EngineContext { display: display, vert_shader_map: HashMap::new(),
-                        frag_shader_map: HashMap::new() }
+                        frag_shader_map: HashMap::new(), texture_cache: TextureCache::new() }
     }
 
     pub fn draw<S: Surface>(&mut self, surface: &mut S, camera: &Camera,
                             obj: &Box<GameObject>) -> Result<(), DrawError> {
         let parent = obj.parent();
-        let uniforms = obj.construct_uniforms(&camera);
 
         let &mut EngineContext { ref display, ref mut vert_shader_map,
-                                 ref mut frag_shader_map } = self;
+                                 ref mut frag_shader_map, .. } = self;
         let vertex_shader = Self::get_shader(vert_shader_map, parent.vert_shader_type);
         let fragment_shader = Self::get_shader(frag_shader_map, parent.frag_shader_type);
         let program = Program::from_source(display, vertex_shader, fragment_shader, None).unwrap();
+
+        let uniforms = obj.construct_uniforms(&camera);
+
         surface.draw(&parent.vertex_buffer, parent.indices.clone(), &program, &uniforms,
                      &parent.draw_params)
     }
@@ -131,20 +189,21 @@ fn main() {
         Camera::new(Vec3::new(0., 0., 1.), w / h)
     };
 
+    let mut ctxt = EngineContext::new(display);
+
     let mut scene = Scene::new(camera);
-    let mut g = Grid::new(&display, 20);
+    let mut g = Grid::new(&ctxt.display, 20);
     g.parent.name = "grid".to_owned();
     scene.add(g);
-    scene.add(Cube::new(&display, 1., zero()));
+    scene.add(Cube::new(&mut ctxt, 1., zero()));
 
     // FIXME: Text needs to go last
-    scene.add_text(Text::new(&display, -0.9, -0.9, "Frame rate: 60fps"));
+    scene.add_text(Text::new(&mut ctxt, -0.9, -0.9, "Frame rate: 60fps"));
 
     let mut right_mouse_pressed = false;
     let mut left_mouse_pressed = false;
     let mut old_mouse_coords = None;
 
-    let mut ctxt = EngineContext::new(display);
     let mut accumulator = 0;
     let mut previous_time = time::precise_time_ns();
     loop {

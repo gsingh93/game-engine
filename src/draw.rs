@@ -1,8 +1,9 @@
-use std::borrow::Cow;
-use std::io::{BufReader, Cursor, Read};
+use std::io::{BufReader, Read};
 use std::fs::File;
 use std::path::Path;
+use std::rc::Rc;
 
+use {Character, EngineContext};
 use shader::{FragmentShaderType, VertexShaderType};
 use camera::Camera;
 
@@ -14,12 +15,10 @@ use glium::{BlendingFunction, DepthTest, Display, DrawParameters, LinearBlending
             VertexBuffer};
 use glium::backend::Facade;
 use glium::index::{IndicesSource, NoIndices, PrimitiveType};
-use glium::texture::{ClientFormat, RawImage2d, Texture2d};
+use glium::texture::Texture2d;
 use glium::uniforms::{MinifySamplerFilter, MagnifySamplerFilter, SamplerBehavior,
                       SamplerWrapFunction, UniformValue, Uniforms};
 use glium::vertex::VertexBufferAny;
-
-use image;
 
 use nalgebra::{self, Col, Mat4, Vec3, Vec4};
 
@@ -153,13 +152,13 @@ impl<'a> GameObject for Grid<'a> {
             ("type", UniformValue::UnsignedInt(COLOR_TYPE)),
             ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
             ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
-            ("transform", UniformValue::Mat4(*self.parent().transform.as_array())),
+            ("transform", UniformValue::Mat4(*self.parent.transform.as_array())),
             ("color", UniformValue::Vec3([1., 1., 1.]))])
     }
 }
 
 impl<'a> Grid<'a> {
-    pub fn new<F: Facade>(facade: &F, dim: u16) -> Self {
+    pub fn new(display: &Display, dim: u16) -> Self {
         let mut shape = Vec::new();
         let len = dim as f32;
         for i in 0..dim * 2 + 1 {
@@ -182,7 +181,7 @@ impl<'a> Grid<'a> {
             .. Default::default()
         };
 
-        let vb = VertexBuffer::new(facade, shape).into_vertex_buffer_any();
+        let vb = VertexBuffer::new(display, shape).into_vertex_buffer_any();
         let indices = NoIndices(PrimitiveType::LinesList);
         let parent = ObjectBuilder::new(vb, indices)
             .draw_params(params)
@@ -194,7 +193,7 @@ impl<'a> Grid<'a> {
 
 pub struct Cube<'a> {
     parent: Object<'a>,
-    texture: Texture2d,
+    texture: Rc<Texture2d>,
 }
 
 impl<'a> GameObject for Cube<'a> {
@@ -212,16 +211,14 @@ impl<'a> GameObject for Cube<'a> {
             ("type", UniformValue::UnsignedInt(TEXTURE_RGB_TYPE)),
             ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
             ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
-            ("transform", UniformValue::Mat4(*self.parent().transform.as_array())),
+            ("transform", UniformValue::Mat4(*self.parent.transform.as_array())),
             ("tex", UniformValue::Texture2d(&self.texture, Some(sampler)))])
     }
 }
 
 impl<'a> Cube<'a> {
-    pub fn new<F: Facade>(facade: &F, dim: f32, pos: Vec3<f32>) -> Self {
-        let image = image::load(Cursor::new(&include_bytes!("../resources/cube.png")[..]),
-                                image::PNG).unwrap();
-        let tex = Texture2d::new(facade, image);
+    pub fn new(ctxt: &mut EngineContext, dim: f32, pos: Vec3<f32>) -> Self {
+        let tex = ctxt.texture_cache.get_texture(&ctxt.display, "resources/cube.png");
 
         let params = DrawParameters {
             depth_test: DepthTest::IfLess,
@@ -233,7 +230,7 @@ impl<'a> Cube<'a> {
         transform = transform * dim;
         transform.set_col(3, Vec4::new(pos.x, pos.y, pos.z, 1.));
 
-        let parent = ObjectBuilder::from_obj(facade, "resources/cube.obj",
+        let parent = ObjectBuilder::from_obj(&ctxt.display, "resources/cube.obj",
                                              NoIndices(PrimitiveType::TrianglesList))
             .draw_params(params)
             .transform(transform)
@@ -257,8 +254,9 @@ pub struct Text<'a> {
 }
 
 impl<'a> Text<'a> {
-    pub fn new(display: &Display, x: f32, y: f32, text: &str) -> Self {
-        let (w, h) = ::get_display_dim(display);
+    pub fn new(ctxt: &mut EngineContext, x: f32, y: f32, text: &str) -> Self {
+        // FIXME: This doesn't update after rescaling
+        let (w, h) = ::get_display_dim(&ctxt.display);
         let (sx, sy) = (2. / w as f32, 2. / h as f32);
 
         let freetype = ft::Library::init().unwrap();
@@ -269,24 +267,14 @@ impl<'a> Text<'a> {
         let mut y = y;
         let mut chars = Vec::new();
         for c in text.chars() {
-            face.load_char(c as usize, ft::face::RENDER).unwrap();
-            let g = face.glyph();
+            let char = ctxt.texture_cache.get_glyph(&ctxt.display, &face, c);
+            let advance_x = char.advance_x * sx;
+            let advance_y = char.advance_y * sy;
 
-            let bitmap = g.bitmap();
-            let texture = Texture2d::new(display, RawImage2d {
-                data: Cow::Borrowed(bitmap.buffer()),
-                width: bitmap.width() as u32, height: bitmap.rows() as u32,
-                format: ClientFormat::U8
-            });
-            chars.push(Char::new(display,
-                                 x, y,
-                                 g.bitmap_left() as f32, g.bitmap_top() as f32,
-                                 bitmap.width() as f32, bitmap.rows() as f32,
-                                 sx, sy,
-                                 texture));
+            chars.push(Char::new(&ctxt.display, x, y, sx, sy, char));
 
-            x += (g.advance().x >> 6) as f32 * sx;
-            y += (g.advance().y >> 6) as f32 * sy;
+            x += advance_x;
+            y += advance_y;
         }
 
         Text { chars: chars }
@@ -299,7 +287,7 @@ impl<'a> Text<'a> {
 
 pub struct Char<'a> {
     parent: Object<'a>,
-    texture: Texture2d
+    char: Rc<Character>,
 }
 
 impl<'a> GameObject for Char<'a> {
@@ -317,19 +305,18 @@ impl<'a> GameObject for Char<'a> {
             ("type", UniformValue::UnsignedInt(TEXTURE_ALPHA_TYPE)),
             ("proj_matrix", UniformValue::Mat4(*camera.projection_matrix().as_array())),
             ("view_matrix", UniformValue::Mat4(*camera.view_matrix().as_array())),
-            ("transform", UniformValue::Mat4(*self.parent().transform.as_array())),
+            ("transform", UniformValue::Mat4(*self.parent.transform.as_array())),
             ("color", UniformValue::Vec3([0., 1., 0.])),
-            ("tex", UniformValue::Texture2d(&self.texture, Some(sampler)))])
+            ("tex", UniformValue::Texture2d(&self.char.texture, Some(sampler)))])
     }
 }
 
 impl<'a> Char<'a> {
-    fn new(display: &Display, x: f32, y: f32, left: f32, _: f32, width: f32, height: f32,
-           sx: f32, sy: f32, texture: Texture2d) -> Self {
-        let x = x + left * sx;
-        let y = y;// - top * sy; // FIXME
-        let width = width * sx;
-        let height = height * sy;
+    fn new(display: &Display, x: f32, y: f32, sx: f32, sy: f32, char: Rc<Character>) -> Self {
+        let x = x + char.left * sx;
+        let y = y - (char.height - char.top) * sy;
+        let width = char.width * sx;
+        let height = char.height * sy;
 
         // FIXME: Properly handle pitch
         // TODO: What is the correct z value?
@@ -356,7 +343,7 @@ impl<'a> Char<'a> {
             .draw_params(params)
             .vert_shader(VertexShaderType::Gui)
             .build();
-        Char { parent: parent, texture: texture }
+        Char { parent: parent, char: char }
     }
 }
 
