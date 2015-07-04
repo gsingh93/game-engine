@@ -224,7 +224,9 @@ impl<'a> GameObject for Cube<'a> {
 
 impl<'a> Cube<'a> {
     pub fn new(ctxt: &mut EngineContext, dim: f32, pos: Vec3<f32>) -> Self {
-        let tex = ctxt.texture_cache.get_texture(&ctxt.display, "resources/cube.png");
+        let mut path = ctxt.resource_dir.clone();
+        path.push("cube.png");
+        let tex = ctxt.texture_cache.get_texture(&ctxt.display, path);
 
         let params = DrawParameters {
             depth_test: DepthTest::IfLess,
@@ -236,7 +238,9 @@ impl<'a> Cube<'a> {
         transform = transform * dim;
         transform.set_col(3, Vec4::new(pos.x, pos.y, pos.z, 1.));
 
-        let parent = ObjectBuilder::from_obj(&ctxt.display, "resources/cube.obj",
+        let mut path = ctxt.resource_dir.clone();
+        path.push("cube.obj");
+        let parent = ObjectBuilder::from_obj(&ctxt.display, path,
                                              NoIndices(PrimitiveType::TrianglesList))
             .draw_params(params)
             .transform(transform)
@@ -261,12 +265,15 @@ pub struct Text<'a> {
 
 impl<'a> Text<'a> {
     pub fn new(ctxt: &mut EngineContext, x: f32, y: f32, text: &str) -> Self {
+        let mut path = ctxt.resource_dir.clone();
+        path.push("FiraSans-Regular.ttf");
+
         // FIXME: This doesn't update after rescaling
         let (w, h) = ::get_display_dim(&ctxt.display);
         let (sx, sy) = (2. / w as f32, 2. / h as f32);
 
         let freetype = ft::Library::init().unwrap();
-        let face = freetype.new_face("resources/FiraSans-Regular.ttf", 0).unwrap();
+        let face = freetype.new_face(path, 0).unwrap();
         face.set_pixel_sizes(0, 16).unwrap();
 
         let mut x = x;

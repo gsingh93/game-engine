@@ -4,6 +4,7 @@ extern crate glium;
 extern crate log;
 
 extern crate env_logger;
+extern crate find_folder;
 extern crate freetype;
 extern crate genmesh;
 extern crate image;
@@ -20,11 +21,14 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::Read;
 use std::fs::File;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use camera::Camera;
 use draw::{Cube, Grid, GameObject, Text};
 use shader::{ShaderType, FragmentShaderType, VertexShaderType};
+
+use find_folder::Search;
 
 use freetype as ft;
 
@@ -92,15 +96,8 @@ pub fn get_display_dim(display: &Display) -> (u32, u32) {
     }
 }
 
-pub struct EngineContext {
-    display: Display,
-    vert_shader_map: HashMap<VertexShaderType, String>,
-    frag_shader_map: HashMap<FragmentShaderType, String>,
-    texture_cache: TextureCache,
-}
-
 pub struct TextureCache {
-    cache: HashMap<&'static str, Rc<Texture2d>>,
+    cache: HashMap<String, Rc<Texture2d>>,
     glyph_cache: HashMap<char, Rc<Character>>,
 }
 
@@ -119,9 +116,10 @@ impl TextureCache {
         TextureCache { cache: HashMap::new(), glyph_cache: HashMap::new() }
     }
 
-    fn get_texture(&mut self, display: &Display, name: &'static str) -> Rc<Texture2d> {
-        self.cache.entry(name).or_insert_with(|| {
-            let f = File::open(name).unwrap();
+    fn get_texture<P: AsRef<Path>>(&mut self, display: &Display, path: P) -> Rc<Texture2d> {
+        let s = path.as_ref().to_str().unwrap().to_owned();
+        self.cache.entry(s).or_insert_with(|| {
+            let f = File::open(path).unwrap();
             let image = image::load(f, image::PNG).unwrap();
             Rc::new(Texture2d::new(display, image))
         }).clone()
@@ -150,20 +148,43 @@ impl TextureCache {
     }
 }
 
+pub struct EngineContext {
+    resource_dir: PathBuf,
+    shader_dir: PathBuf,
+    display: Display,
+    vert_shader_map: HashMap<VertexShaderType, String>,
+    frag_shader_map: HashMap<FragmentShaderType, String>,
+    texture_cache: TextureCache,
+}
+
 impl EngineContext {
     pub fn new(display: Display) -> Self {
-        EngineContext { display: display, vert_shader_map: HashMap::new(),
-                        frag_shader_map: HashMap::new(), texture_cache: TextureCache::new() }
+        let resource_dir = Search::Parents(4).for_folder("resources").unwrap();
+        let shader_dir = Search::Parents(4).for_folder("shaders").unwrap();
+        EngineContext {
+            resource_dir: resource_dir,
+            shader_dir: shader_dir,
+            display: display,
+            vert_shader_map: HashMap::new(),
+            frag_shader_map: HashMap::new(),
+            texture_cache: TextureCache::new()
+        }
     }
 
     pub fn draw<S: Surface>(&mut self, surface: &mut S, camera: &Camera,
                             obj: &Box<GameObject>) -> Result<(), DrawError> {
         let parent = obj.parent();
 
-        let &mut EngineContext { ref display, ref mut vert_shader_map,
-                                 ref mut frag_shader_map, .. } = self;
-        let vertex_shader = Self::get_shader(vert_shader_map, parent.vert_shader_type);
-        let fragment_shader = Self::get_shader(frag_shader_map, parent.frag_shader_type);
+        let &mut EngineContext {
+            ref shader_dir,
+            ref display,
+            ref mut vert_shader_map,
+            ref mut frag_shader_map,
+            ..
+        } = self;
+        let vertex_shader = Self::get_shader(shader_dir, vert_shader_map, parent.vert_shader_type);
+        let fragment_shader = Self::get_shader(shader_dir, frag_shader_map,
+                                               parent.frag_shader_type);
         let program = Program::from_source(display, vertex_shader, fragment_shader, None).unwrap();
 
         let uniforms = obj.construct_uniforms(&camera);
@@ -172,10 +193,13 @@ impl EngineContext {
                      &parent.draw_params)
     }
 
-    fn get_shader<S: ShaderType>(shader_map: &mut HashMap<S, String>, shader_type: S) -> &str {
+    fn get_shader<'a, S: ShaderType>(shader_dir: &PathBuf, shader_map: &'a mut HashMap<S, String>,
+                                     shader_type: S) -> &'a str {
         shader_map.entry(shader_type).or_insert_with(|| {
             let mut shader = String::new();
-            File::open(shader_type.to_filename()).unwrap().read_to_string(&mut shader).unwrap();
+            let mut path = shader_dir.clone();
+            path.push(shader_type.to_filename());
+            File::open(path).unwrap().read_to_string(&mut shader).unwrap();
             shader
         })
     }

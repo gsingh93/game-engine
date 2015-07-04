@@ -3,6 +3,7 @@ name = "opengl"
 version = "0.1.0"
 dependencies = [
  "env_logger 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "find_folder 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "freetype-rs 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "genmesh 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "glium 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -125,6 +126,11 @@ dependencies = [
  "log 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 0.1.38 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "find_folder"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "freetype-rs"

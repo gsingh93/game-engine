@@ -20,7 +20,7 @@ pub enum VertexShaderType {
 impl ShaderType for FragmentShaderType {
     fn to_filename(&self) -> &'static str {
         match self {
-            &FragmentShaderType::Unlit => "shaders/unlit.fragment.glsl",
+            &FragmentShaderType::Unlit => "unlit.fragment.glsl",
         }
     }
 }
@@ -28,8 +28,8 @@ impl ShaderType for FragmentShaderType {
 impl ShaderType for VertexShaderType {
     fn to_filename(&self) -> &'static str {
         match self {
-            &VertexShaderType::Perspective => "shaders/perspective.vertex.glsl",
-            &VertexShaderType::Gui => "shaders/gui.vertex.glsl"
+            &VertexShaderType::Perspective => "perspective.vertex.glsl",
+            &VertexShaderType::Gui => "gui.vertex.glsl"
         }
     }
 }
