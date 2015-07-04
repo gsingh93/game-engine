@@ -16,7 +16,7 @@ mod camera;
 mod draw;
 mod shader;
 
-use std::{mem, thread};
+use std::mem;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io::Read;
@@ -60,30 +60,36 @@ impl<'a> Scene<'a> {
     fn draw(&self, ctxt: &mut EngineContext) {
         let mut target = ctxt.display.draw();
         target.clear_color_and_depth((0., 0., 0., 1.), 1.);
-        for obj in self.named_objects.values().chain(self.unamed_objects.iter()) {
-            ctxt.draw(&mut target, &self.camera, obj).unwrap();
-        }
+        self.draw_objs(&mut target, ctxt,
+                       self.named_objects.values().chain(self.unamed_objects.iter()));
         target.finish().unwrap();
     }
 
+    fn draw_objs<I: Iterator<Item=&'a Box<GameObject>>, S: Surface>(&self, target: &mut S,
+                                                                    ctxt: &mut EngineContext,
+                                                                    objs: I) {
+        for obj in objs {
+            if obj.parent().vertex_buffer.is_some() {
+                ctxt.draw(target, &self.camera, obj).unwrap();
+            }
+            if let Some(children) = obj.children() {
+                self.draw_objs(target, ctxt, children.iter());
+            }
+        }
+    }
+
     fn add<G: GameObject + 'a>(&mut self, object: G) {
-        if object.name().is_empty() {
+        if object.name().is_none() { // FIXME
             self.unamed_objects.push(Box::new(object));
         } else {
-            assert!(self.named_objects.insert(object.name().to_owned(),
+            assert!(self.named_objects.insert(object.name().unwrap().to_owned(),
                                               Box::new(object)).is_none(),
                     "Duplicate object name");
         }
     }
 
-    fn add_text(&mut self, text: Text<'static>) {
-        for c in text.into_chars() {
-            self.add(c);
-        }
-    }
-
-    unsafe fn get_object<T: GameObject>(&self, name: &str) -> Option<&T> {
-        self.named_objects.get(name).map(|o| mem::transmute(o))
+    unsafe fn get_object<T: GameObject>(&mut self, name: &str) -> Option<&mut Box<T>> {
+        self.named_objects.get_mut(name).map(|o| mem::transmute(o))
     }
 }
 
@@ -101,6 +107,7 @@ pub struct TextureCache {
     glyph_cache: HashMap<char, Rc<Character>>,
 }
 
+#[derive(Debug)]
 pub struct Character {
     left: f32,
     top: f32,
@@ -175,22 +182,27 @@ impl EngineContext {
                             obj: &Box<GameObject>) -> Result<(), DrawError> {
         let parent = obj.parent();
 
-        let &mut EngineContext {
-            ref shader_dir,
-            ref display,
-            ref mut vert_shader_map,
-            ref mut frag_shader_map,
-            ..
-        } = self;
-        let vertex_shader = Self::get_shader(shader_dir, vert_shader_map, parent.vert_shader_type);
-        let fragment_shader = Self::get_shader(shader_dir, frag_shader_map,
-                                               parent.frag_shader_type);
-        let program = Program::from_source(display, vertex_shader, fragment_shader, None).unwrap();
+        if let (&Some(ref vb), &Some(ref indices)) = (&parent.vertex_buffer, &parent.indices) {
+            let &mut EngineContext {
+                ref shader_dir,
+                ref display,
+                ref mut vert_shader_map,
+                ref mut frag_shader_map,
+                ..
+            } = self;
+            let vertex_shader = Self::get_shader(shader_dir, vert_shader_map,
+                                                 parent.vert_shader_type);
+            let fragment_shader = Self::get_shader(shader_dir, frag_shader_map,
+                                                   parent.frag_shader_type);
+            let program = Program::from_source(display, vertex_shader, fragment_shader,
+                                               None).unwrap();
 
-        let uniforms = obj.construct_uniforms(&camera);
+            let uniforms = obj.construct_uniforms(&camera);
 
-        surface.draw(&parent.vertex_buffer, parent.indices.clone(), &program, &uniforms,
-                     &parent.draw_params)
+            surface.draw(vb, indices.clone(), &program, &uniforms, &parent.draw_params)
+        } else {
+            Ok(())
+        }
     }
 
     fn get_shader<'a, S: ShaderType>(shader_dir: &PathBuf, shader_map: &'a mut HashMap<S, String>,
@@ -223,13 +235,13 @@ fn main() {
     let mut ctxt = EngineContext::new(display);
 
     let mut scene = Scene::new(camera);
-    let mut g = Grid::new(&ctxt.display, 20);
-    g.parent.name = "grid".to_owned();
-    scene.add(g);
+    scene.add(Grid::new(&ctxt.display, 20));
     scene.add(Cube::new(&mut ctxt, 1., zero()));
 
     // FIXME: Text needs to go last
-    scene.add_text(Text::new(&mut ctxt, -0.9, -0.9, "Frame rate: 60fps"));
+    let mut t = Text::new(&mut ctxt, -0.9, -0.9, "Frame rate: 60fps");
+    t.parent.name = Some("text".to_owned());
+    scene.add(t);
 
     let mut right_mouse_pressed = false;
     let mut left_mouse_pressed = false;
@@ -328,6 +340,8 @@ fn main() {
             if now > target_time {
                 target_time = now + 1e9 as u64;
                 debug!("fps: {}", nframes);
+                let mut text = unsafe { scene.get_object::<Text>("text").unwrap() };
+                text.set_text(&mut ctxt, &format!("Frame rate: {}fps", nframes));
                 nframes = 0;
             }
         }

@@ -50,8 +50,8 @@ impl Vertex {
 implement_vertex!(Vertex, position, tex_coord);
 
 pub struct ObjectBuilder<'a> {
-    vertex_buffer: VertexBufferAny,
-    indices: IndicesSource<'a>,
+    vertex_buffer: Option<VertexBufferAny>,
+    indices: Option<IndicesSource<'a>>,
     draw_params: Option<DrawParameters<'a>>,
     transform: Option<Mat4<f32>>,
     vert_shader_type: Option<VertexShaderType>,
@@ -59,10 +59,10 @@ pub struct ObjectBuilder<'a> {
 }
 
 impl<'a> ObjectBuilder<'a> {
-    pub fn new<I: Into<IndicesSource<'a>>>(vb: VertexBufferAny, indices: I) -> Self {
+    pub fn new() -> Self {
         ObjectBuilder {
-            vertex_buffer: vb,
-            indices: indices.into(),
+            vertex_buffer: None,
+            indices: None,
             draw_params: None,
             transform: None,
             vert_shader_type: None,
@@ -70,10 +70,17 @@ impl<'a> ObjectBuilder<'a> {
         }
     }
 
+    pub fn vertex_buffer<I: Into<IndicesSource<'a>>>(mut self, vb: VertexBufferAny,
+                                                     indices: I) -> Self {
+        self.vertex_buffer = Some(vb);
+        self.indices = Some(indices.into());
+        self
+    }
+
     pub fn from_obj<F, I, P>(facade: &F, path: P, indices: I) -> Self
     where F: Facade, I: Into<IndicesSource<'a>>, P: AsRef<Path> {
         let vb = load_obj(facade, &mut BufReader::new(File::open(path).unwrap()));
-        Self::new(vb, indices)
+        ObjectBuilder::new().vertex_buffer(vb, indices)
     }
 
     pub fn draw_params(mut self, params: DrawParameters<'a>) -> Self {
@@ -98,7 +105,7 @@ impl<'a> ObjectBuilder<'a> {
 
     pub fn build(self) -> Object<'a> {
         Object {
-            name: "".to_owned(), // FIXME: Use an Option here?
+            name: None,
             vertex_buffer: self.vertex_buffer,
             indices: self.indices,
             draw_params: self.draw_params.unwrap_or_else(|| Default::default()),
@@ -111,9 +118,9 @@ impl<'a> ObjectBuilder<'a> {
 
 // FIXME: Use getters instead of public fields
 pub struct Object<'a> {
-    pub name: String,
-    pub vertex_buffer: VertexBufferAny,
-    pub indices: IndicesSource<'a>,
+    pub name: Option<String>,
+    pub vertex_buffer: Option<VertexBufferAny>,
+    pub indices: Option<IndicesSource<'a>>,
     pub draw_params: DrawParameters<'a>,
     pub transform: Mat4<f32>,
     pub vert_shader_type: VertexShaderType,
@@ -121,11 +128,14 @@ pub struct Object<'a> {
 }
 
 pub trait GameObject {
-    fn name(&self) -> &str {
-        &self.parent().name
+    fn name(&self) -> Option<&str> {
+        self.parent().name.as_ref().map(|s| &*s as &str)
     }
     fn update(&mut self) {}
     fn parent(&self) -> &Object;
+    fn children(&self) -> Option<&[Box<GameObject>]> {
+        None
+    }
     fn construct_uniforms(&self, &Camera) -> UniformsVec;
 }
 
@@ -139,7 +149,7 @@ impl<'b> Uniforms for UniformsVec<'b> {
 }
 
 pub struct Grid<'a> {
-    pub parent: Object<'a>,
+    parent: Object<'a>,
 }
 
 impl<'a> GameObject for Grid<'a> {
@@ -183,7 +193,7 @@ impl<'a> Grid<'a> {
 
         let vb = VertexBuffer::new(display, shape).into_vertex_buffer_any();
         let indices = NoIndices(PrimitiveType::LinesList);
-        let parent = ObjectBuilder::new(vb, indices)
+        let parent = ObjectBuilder::new().vertex_buffer(vb, indices)
             .draw_params(params)
             .build();
 
@@ -260,11 +270,59 @@ impl<'a> Cube<'a> {
 }
 
 pub struct Text<'a> {
-    chars: Vec<Char<'a>>
+    pub parent: Object<'a>,
+    chars: Vec<Box<GameObject>>,
+    face: ft::Face<'a>, // TODO: Lifetime?
+    x: f32,
+    y: f32,
+}
+
+impl<'a> GameObject for Text<'a> {
+    fn parent(&self) -> &Object {
+        &self.parent
+    }
+
+    fn children(&self) -> Option<&[Box<GameObject>]> {
+        Some(&*self.chars)
+    }
+
+    fn construct_uniforms(&self, _: &Camera) -> UniformsVec {
+        unimplemented!()
+    }
 }
 
 impl<'a> Text<'a> {
-    pub fn new(ctxt: &mut EngineContext, x: f32, y: f32, text: &str) -> Self {
+    pub fn new(ctxt: &mut EngineContext, x_start: f32, y_start: f32, text: &str) -> Self {
+        let mut path = ctxt.resource_dir.clone();
+        path.push("FiraSans-Regular.ttf");
+
+        let freetype = ft::Library::init().unwrap();
+        let face = freetype.new_face(path, 0).unwrap();
+        face.set_pixel_sizes(0, 16).unwrap();
+
+        // FIXME: This doesn't update after rescaling
+        let (w, h) = ::get_display_dim(&ctxt.display);
+        let (sx, sy) = (2. / w as f32, 2. / h as f32);
+
+        let mut x = x_start;
+        let mut y = y_start;
+        let mut chars = Vec::new();
+        for c in text.chars() {
+            let char = ctxt.texture_cache.get_glyph(&ctxt.display, &face, c);
+            let advance_x = char.advance_x * sx;
+            let advance_y = char.advance_y * sy;
+
+            chars.push(Box::new(Char::new(&ctxt.display, x, y, sx, sy, char)) as Box<GameObject>);
+
+            x += advance_x;
+            y += advance_y;
+        }
+
+        Text { chars: chars, face: face, x: x_start, y: y_start,
+               parent: ObjectBuilder::new().build() }
+    }
+
+    pub fn set_text(&mut self, ctxt: &mut EngineContext, text: &str) {
         let mut path = ctxt.resource_dir.clone();
         path.push("FiraSans-Regular.ttf");
 
@@ -272,29 +330,20 @@ impl<'a> Text<'a> {
         let (w, h) = ::get_display_dim(&ctxt.display);
         let (sx, sy) = (2. / w as f32, 2. / h as f32);
 
-        let freetype = ft::Library::init().unwrap();
-        let face = freetype.new_face(path, 0).unwrap();
-        face.set_pixel_sizes(0, 16).unwrap();
-
-        let mut x = x;
-        let mut y = y;
+        let mut x = self.x;
+        let mut y = self.y;
         let mut chars = Vec::new();
         for c in text.chars() {
-            let char = ctxt.texture_cache.get_glyph(&ctxt.display, &face, c);
+            let char = ctxt.texture_cache.get_glyph(&ctxt.display, &self.face, c);
             let advance_x = char.advance_x * sx;
             let advance_y = char.advance_y * sy;
 
-            chars.push(Char::new(&ctxt.display, x, y, sx, sy, char));
+            chars.push(Box::new(Char::new(&ctxt.display, x, y, sx, sy, char)) as Box<GameObject>);
 
             x += advance_x;
             y += advance_y;
         }
-
-        Text { chars: chars }
-    }
-
-    pub fn into_chars(self) -> Vec<Char<'a>> {
-        self.chars
+        self.chars = chars;
     }
 }
 
@@ -352,7 +401,8 @@ impl<'a> Char<'a> {
             .. Default::default()
         };
 
-        let parent = ObjectBuilder::new(vb, NoIndices(PrimitiveType::TrianglesList))
+        let parent = ObjectBuilder::new()
+            .vertex_buffer(vb, NoIndices(PrimitiveType::TrianglesList))
             .draw_params(params)
             .vert_shader(VertexShaderType::Gui)
             .build();
